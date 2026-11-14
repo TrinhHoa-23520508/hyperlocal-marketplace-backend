@@ -2,7 +2,7 @@
 # Values come from .env; the defaults match .env.example.
 services:
   postgres:
-    image: 'postgis/postgis:17-3.5'
+    image: 'imresamu/postgis:17-3.5'
     labels:
       org.springframework.boot.service-connection: postgres
     environment:
