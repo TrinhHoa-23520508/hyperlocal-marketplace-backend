@@ -1,10 +1,12 @@
 package vn.edu.uit.nearby.nearby_backend.identity.application.profile;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
@@ -59,20 +61,28 @@ public class ProfileServiceImpl implements ProfileService {
 	@Transactional
 	public UserProfile updateProfile(UUID userId, UpdateProfileCommand command) {
 		User user = users.getRequired(userId);
-		HomeArea homeArea = command.homeArea() == null ? null : HomeArea.roundedFrom(command.homeArea());
-		user.updateProfile(command.displayName().trim(), homeArea, clock.instant());
+		Instant now = clock.instant();
+		user.rename(command.displayName().trim(), parameters.displayNameChangeInterval(), now);
+		user.moveHomeArea(command.homeArea() == null ? null : HomeArea.roundedFrom(command.homeArea()), now);
 		return toProfile(user);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public PublicProfile getPublicProfile(UUID userId) {
+		User user = users.getRequired(userId);
+		return new PublicProfile(user.getId(), user.getDisplayName(), avatarUrlOf(user), user.hasVerifiedPhone(),
+				user.getCreatedAt(), user.isDeleted());
 	}
 
 	@Override
 	public AvatarUpload createAvatarUpload(UUID userId, AvatarUploadCommand command) {
 		ImageUploadPolicy policy = imageUploadPolicy();
-		policy.validate(command.contentType(), command.sizeBytes());
-		String objectKey = avatarFolderOf(userId) + UUID.randomUUID() + "."
-				+ policy.fileExtensionOf(command.contentType());
-		PresignedUrl upload = storage.presignUpload(objectKey, command.contentType());
+		String contentType = policy.validate(command.contentType(), command.sizeBytes());
+		String objectKey = avatarFolderOf(userId) + UUID.randomUUID() + "." + policy.fileExtensionOf(contentType);
+		PresignedUrl upload = storage.presignUpload(objectKey, contentType);
 		return new AvatarUpload(objectKey, upload.url(), upload.method(), upload.expiresAt(),
-				Map.of(HttpHeaders.CONTENT_TYPE, command.contentType()));
+				Map.of(HttpHeaders.CONTENT_TYPE, contentType));
 	}
 
 	@Override
@@ -123,12 +133,21 @@ public class ProfileServiceImpl implements ProfileService {
 	}
 
 	private UserProfile toProfile(User user) {
-		String avatarUrl = user.getAvatarKey() == null ? null : storage.presignDownload(user.getAvatarKey()).url();
 		GeoPoint homeArea = user.homeArea().map(HomeArea::center).orElse(null);
 		return new UserProfile(user.getId(), user.phoneNumber().map(PhoneNumber::value).orElse(null),
-				user.emailAddress().map(EmailAddress::value).orElse(null), user.getDisplayName(), avatarUrl,
+				user.emailAddress().map(EmailAddress::value).orElse(null), user.getDisplayName(), avatarUrlOf(user),
 				user.getRole(), user.getStatus(), homeArea, user.hasVerifiedPhone(), user.hasVerifiedEmail(),
-				user.getCreatedAt());
+				user.getCreatedAt(), nextRenameAllowedAt(user));
+	}
+
+	private @Nullable Instant nextRenameAllowedAt(User user) {
+		return user.nextRenameAllowedAt(parameters.displayNameChangeInterval())
+			.filter(clock.instant()::isBefore)
+			.orElse(null);
+	}
+
+	private @Nullable String avatarUrlOf(User user) {
+		return user.getAvatarKey() == null ? null : storage.presignDownload(user.getAvatarKey()).url();
 	}
 
 	private static String avatarFolderOf(UUID userId) {

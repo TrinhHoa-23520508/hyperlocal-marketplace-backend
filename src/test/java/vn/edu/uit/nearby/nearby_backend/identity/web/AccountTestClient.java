@@ -102,8 +102,20 @@ final class AccountTestClient {
 	}
 
 	ResultActions login(String identifier, String password) throws Exception {
-		return postJson("/api/v1/auth/login", """
-				{"identifier":"%s","password":"%s"}""".formatted(identifier, password));
+		return postJson("/api/v1/auth/login", loginJson(identifier, password));
+	}
+
+	ResultActions loginFrom(String clientIp, String identifier, String password) throws Exception {
+		return mvc
+			.perform(jsonRequest(post("/api/v1/auth/login"), loginJson(identifier, password)).with(servletRequest -> {
+				servletRequest.setRemoteAddr(clientIp);
+				return servletRequest;
+			}));
+	}
+
+	private static String loginJson(String identifier, String password) {
+		return """
+				{"identifier":"%s","password":"%s"}""".formatted(identifier, password);
 	}
 
 	Session loginSession(String identifier) throws Exception {

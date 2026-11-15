@@ -33,6 +33,39 @@ services:
     volumes:
       - miniodata:/data
 
+  # Monitoring, off by default: docker compose --profile monitoring up -d
+  # Prometheus http://localhost:9090, Grafana http://localhost:3000 (admin / admin)
+  prometheus:
+    image: 'prom/prometheus:v3.4.1'
+    profiles: ['monitoring']
+    labels:
+      org.springframework.boot.ignore: true
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    ports:
+      - '${PROMETHEUS_PORT:-9090}:9090'
+    volumes:
+      - ./deploy/prometheus/prometheus-local.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+  grafana:
+    image: 'grafana/grafana:12.0.2'
+    profiles: ['monitoring']
+    labels:
+      org.springframework.boot.ignore: true
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    ports:
+      - '${GRAFANA_PORT:-3000}:3000'
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
 volumes:
   pgdata:
   miniodata:

@@ -13,7 +13,9 @@ import static vn.edu.uit.nearby.nearby_backend.identity.domain.UserFixtures.NOW;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,9 +24,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import vn.edu.uit.nearby.nearby_backend.identity.AccountDeletionCancelled;
+import vn.edu.uit.nearby.nearby_backend.identity.DeviceSignedOut;
+import vn.edu.uit.nearby.nearby_backend.identity.SanctionLifted;
+import vn.edu.uit.nearby.nearby_backend.identity.application.admin.AuditLogService;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.AccountStatus;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.PhoneNumber;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.RevokeReason;
@@ -45,6 +53,10 @@ import vn.edu.uit.nearby.nearby_backend.shared.security.TokenService;
 class AuthServiceImplTests {
 
 	private static final String PASSWORD = "Secret123";
+
+	private static final String CLIENT_IP = "203.0.113.5";
+
+	private static final String FCM_TOKEN = "fcm-token-of-this-phone";
 
 	private static final String DUMMY_HASH = "{bcrypt}dummy";
 
@@ -70,13 +82,20 @@ class AuthServiceImplTests {
 	@Mock
 	PasswordEncoder passwordEncoder;
 
+	@Mock
+	AuditLogService auditLog;
+
+	@Mock
+	ApplicationEventPublisher events;
+
 	private AuthServiceImpl authService;
 
 	@BeforeEach
 	void createService() {
 		when(passwordEncoder.encode(anyString())).thenReturn(DUMMY_HASH);
+		Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 		authService = new AuthServiceImpl(users, refreshTokens, sessions, loginAttempts, passwordEncoder,
-				Clock.fixed(NOW, ZoneOffset.UTC));
+				new AccountAccessPolicy(auditLog, events, clock), events, clock);
 	}
 
 	@Test
@@ -86,10 +105,10 @@ class AuthServiceImplTests {
 		when(passwordEncoder.matches(PASSWORD, UserFixtures.PASSWORD_HASH)).thenReturn(true);
 		when(sessions.start(user)).thenReturn(TOKENS);
 
-		TokenPair tokens = authService.login(new LoginCommand("0912 345 678", PASSWORD));
+		TokenPair tokens = authService.login(new LoginCommand("0912 345 678", PASSWORD, CLIENT_IP));
 
 		assertThat(tokens).isEqualTo(TOKENS);
-		verify(loginAttempts).clearFailures(PHONE);
+		verify(loginAttempts).clearFailures(new LoginAttempt(PHONE, CLIENT_IP));
 	}
 
 	@Test
@@ -99,7 +118,8 @@ class AuthServiceImplTests {
 		when(passwordEncoder.matches(PASSWORD, UserFixtures.PASSWORD_HASH)).thenReturn(true);
 		when(sessions.start(user)).thenReturn(TOKENS);
 
-		assertThat(authService.login(new LoginCommand(" An.Nguyen@Example.com", PASSWORD))).isEqualTo(TOKENS);
+		assertThat(authService.login(new LoginCommand(" An.Nguyen@Example.com", PASSWORD, CLIENT_IP)))
+			.isEqualTo(TOKENS);
 	}
 
 	@Test
@@ -107,11 +127,11 @@ class AuthServiceImplTests {
 		when(users.findByEmail(UserFixtures.EMAIL)).thenReturn(Optional.of(UserFixtures.userWithUnverifiedEmail()));
 		when(passwordEncoder.matches(PASSWORD, DUMMY_HASH)).thenReturn(false);
 
-		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.EMAIL, PASSWORD)))
+		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.EMAIL, PASSWORD, CLIENT_IP)))
 			.isInstanceOf(AuthenticationFailedException.class)
 			.extracting(AuthServiceImplTests::codeOf)
 			.isEqualTo("INVALID_CREDENTIALS");
-		verify(loginAttempts).recordFailure(EmailAddress.of(UserFixtures.EMAIL));
+		verify(loginAttempts).recordFailure(new LoginAttempt(EmailAddress.of(UserFixtures.EMAIL), CLIENT_IP));
 		verifyNoInteractions(sessions);
 	}
 
@@ -120,11 +140,11 @@ class AuthServiceImplTests {
 		when(users.findByPhoneE164(UserFixtures.PHONE)).thenReturn(Optional.of(UserFixtures.activeUser()));
 		when(passwordEncoder.matches(PASSWORD, UserFixtures.PASSWORD_HASH)).thenReturn(false);
 
-		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD)))
+		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD, CLIENT_IP)))
 			.isInstanceOf(AuthenticationFailedException.class)
 			.extracting(AuthServiceImplTests::codeOf)
 			.isEqualTo("INVALID_CREDENTIALS");
-		verify(loginAttempts).recordFailure(PHONE);
+		verify(loginAttempts).recordFailure(new LoginAttempt(PHONE, CLIENT_IP));
 		verifyNoInteractions(sessions);
 	}
 
@@ -132,38 +152,80 @@ class AuthServiceImplTests {
 	void unknownPhoneStillChecksAPasswordAndFailsTheSameWay() {
 		when(users.findByPhoneE164(UserFixtures.PHONE)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD)))
+		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD, CLIENT_IP)))
 			.isInstanceOf(AuthenticationFailedException.class)
 			.hasMessage("Phone number, email or password is incorrect.");
 		verify(passwordEncoder).matches(PASSWORD, DUMMY_HASH);
-		verify(loginAttempts).recordFailure(PHONE);
+		verify(loginAttempts).recordFailure(new LoginAttempt(PHONE, CLIENT_IP));
 	}
 
 	@Test
 	void blockedIdentifierIsRejectedBeforeThePasswordIsChecked() {
 		doThrow(new RateLimitExceededException("LOGIN_LOCKED", "locked", Duration.ofMinutes(10))).when(loginAttempts)
-			.ensureNotBlocked(PHONE);
+			.ensureNotBlocked(new LoginAttempt(PHONE, CLIENT_IP));
 
-		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD)))
+		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD, CLIENT_IP)))
 			.isInstanceOf(RateLimitExceededException.class);
 		verify(passwordEncoder, never()).matches(anyString(), anyString());
 	}
 
 	@Test
-	void lockedAccountCannotLogInEvenWithTheRightPassword() {
-		when(users.findByPhoneE164(UserFixtures.PHONE)).thenReturn(Optional.of(UserFixtures.lockedUser()));
-		when(passwordEncoder.matches(PASSWORD, UserFixtures.PASSWORD_HASH)).thenReturn(true);
+	void bannedAccountIsToldWhyInsteadOfGettingTokens() {
+		User user = givenLoginAccount(UserFixtures.bannedUser());
+		when(auditLog.latestSanctionReason(user.getId())).thenReturn(Optional.of("Scam reports"));
 
-		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD)))
+		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD, CLIENT_IP)))
 			.isInstanceOf(OperationNotAllowedException.class)
-			.extracting(AuthServiceImplTests::codeOf)
-			.isEqualTo("ACCOUNT_LOCKED");
+			.satisfies(ex -> {
+				assertThat(codeOf(ex)).isEqualTo("ACCOUNT_BANNED");
+				assertThat(((BusinessException) ex).getProperties())
+					.containsExactlyEntriesOf(Map.of("reason", "Scam reports"));
+			});
 		verifyNoInteractions(sessions);
 	}
 
 	@Test
+	void suspendedAccountIsToldUntilWhen() {
+		Instant until = NOW.plus(Duration.ofDays(7));
+		User user = givenLoginAccount(UserFixtures.suspendedUntil(until));
+		when(auditLog.latestSanctionReason(user.getId())).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD, CLIENT_IP)))
+			.satisfies(ex -> {
+				assertThat(codeOf(ex)).isEqualTo("ACCOUNT_SUSPENDED");
+				assertThat(((BusinessException) ex).getProperties())
+					.containsExactlyEntriesOf(Map.of("suspendedUntil", until));
+			});
+		verifyNoInteractions(sessions, events);
+	}
+
+	@Test
+	void loginAfterTheSuspensionEndedLiftsItAndStartsASession() {
+		User user = givenLoginAccount(UserFixtures.suspendedUntil(NOW));
+		when(sessions.start(user)).thenReturn(TOKENS);
+
+		assertThat(authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD, CLIENT_IP))).isEqualTo(TOKENS);
+
+		assertThat(user.getStatus()).isEqualTo(AccountStatus.ACTIVE);
+		verify(events).publishEvent(new SanctionLifted(user.getId(), NOW));
+	}
+
+	@Test
+	void loginDuringTheDeletionGracePeriodCancelsTheDeletion() {
+		User user = UserFixtures.activeUser();
+		user.requestDeletion(NOW.minus(Duration.ofDays(2)));
+		givenLoginAccount(user);
+		when(sessions.start(user)).thenReturn(TOKENS);
+
+		assertThat(authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD, CLIENT_IP))).isEqualTo(TOKENS);
+
+		assertThat(user.getStatus()).isEqualTo(AccountStatus.ACTIVE);
+		verify(events).publishEvent(new AccountDeletionCancelled(user.getId(), NOW));
+	}
+
+	@Test
 	void malformedPhoneIsRejectedBeforeAnyLookup() {
-		assertThatThrownBy(() -> authService.login(new LoginCommand("12345", PASSWORD)))
+		assertThatThrownBy(() -> authService.login(new LoginCommand("12345", PASSWORD, CLIENT_IP)))
 			.isInstanceOf(InvalidRequestException.class);
 		verifyNoInteractions(users, loginAttempts);
 	}
@@ -225,32 +287,50 @@ class AuthServiceImplTests {
 	}
 
 	@Test
-	void lockedAccountCannotRefresh() {
-		User user = UserFixtures.lockedUser();
+	void bannedAccountCannotRefresh() {
+		User user = UserFixtures.bannedUser();
 		StoredRefreshToken stored = storedToken(user);
 		when(refreshTokens.revokeIfActive(stored.getId(), NOW, RevokeReason.ROTATED)).thenReturn(1);
 		when(users.getRequired(stored.getUserId())).thenReturn(user);
 
 		assertThatThrownBy(() -> authService.refresh(RAW_REFRESH_TOKEN)).extracting(AuthServiceImplTests::codeOf)
-			.isEqualTo("ACCOUNT_LOCKED");
+			.isEqualTo("ACCOUNT_BANNED");
 	}
 
 	@Test
 	void logoutRevokesTheRefreshToken() {
 		StoredRefreshToken stored = storedToken(UserFixtures.activeUser());
 
-		authService.logout(RAW_REFRESH_TOKEN);
+		authService.logout(RAW_REFRESH_TOKEN, null);
 
 		verify(refreshTokens).revokeIfActive(stored.getId(), NOW, RevokeReason.LOGOUT);
+		verifyNoInteractions(events);
+	}
+
+	@Test
+	void logoutWithThePushTokenStopsPushesToThatDevice() {
+		User user = UserFixtures.activeUser();
+		storedToken(user);
+
+		authService.logout(RAW_REFRESH_TOKEN, FCM_TOKEN);
+
+		verify(events).publishEvent(new DeviceSignedOut(user.getId(), FCM_TOKEN));
 	}
 
 	@Test
 	void logoutWithAnUnknownTokenIsAlreadyLoggedOut() {
 		when(refreshTokens.findByTokenHash(anyString())).thenReturn(Optional.empty());
 
-		authService.logout(RAW_REFRESH_TOKEN);
+		authService.logout(RAW_REFRESH_TOKEN, FCM_TOKEN);
 
 		verify(refreshTokens, never()).revokeIfActive(any(), any(), any());
+		verifyNoInteractions(events);
+	}
+
+	private User givenLoginAccount(User user) {
+		when(users.findByPhoneE164(UserFixtures.PHONE)).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches(PASSWORD, UserFixtures.PASSWORD_HASH)).thenReturn(true);
+		return user;
 	}
 
 	private StoredRefreshToken storedToken(User user) {

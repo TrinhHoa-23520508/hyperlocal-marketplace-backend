@@ -1,11 +1,14 @@
 package vn.edu.uit.nearby.nearby_backend.identity.infrastructure;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
+import vn.edu.uit.nearby.nearby_backend.identity.domain.AccountStatus;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.shared.constant.ErrorCodes;
 import vn.edu.uit.nearby.nearby_backend.shared.error.ResourceNotFoundException;
@@ -21,6 +24,10 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
 	boolean existsByEmail(String email);
 
 	boolean existsByEmailAndIdNot(String email, UUID excludedUserId);
+
+	List<User> findByStatusAndSuspendedUntilLessThanEqual(AccountStatus status, Instant suspendedUntil);
+
+	List<User> findByStatusAndDeletionRequestedAtLessThanEqual(AccountStatus status, Instant deletionRequestedAt);
 
 	default User getRequired(UUID userId) {
 		return findById(userId)

@@ -1,6 +1,7 @@
 package vn.edu.uit.nearby.nearby_backend.identity.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasItems;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -11,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -20,12 +23,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.RequestBuilder;
 import org.springframework.test.web.servlet.ResultActions;
 
+import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
 import vn.edu.uit.nearby.nearby_backend.identity.web.AccountTestClient.Session;
 import vn.edu.uit.nearby.nearby_backend.shared.security.TokenService;
@@ -74,6 +79,9 @@ class AuthApiIntegrationTests {
 
 	@Autowired
 	TokenService tokenService;
+
+	@Autowired
+	JdbcClient jdbc;
 
 	private AccountTestClient client;
 
@@ -284,6 +292,36 @@ class AuthApiIntegrationTests {
 	}
 
 	@Test
+	void manyFailuresFromOneIpLockThatIpForEveryAccount() throws Exception {
+		String sharedIp = AccountTestClient.uniqueClientIp();
+		client.userWithPhone(phone);
+		for (int i = 0; i < 20; i++) {
+			client.loginFrom(sharedIp, AccountTestClient.uniquePhone(), "Wrong1234")
+				.andExpect(status().isUnauthorized());
+		}
+
+		client.loginFrom(sharedIp, phone, AccountTestClient.PASSWORD)
+			.andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.code").value("LOGIN_LOCKED"));
+		client.login(phone, AccountTestClient.PASSWORD).andExpect(status().isOk());
+	}
+
+	@Test
+	void logoutWithThePushTokenRemovesThatDeviceOnly() throws Exception {
+		User user = client.userWithPhone(phone);
+		Session session = client.loginSession(phone);
+		insertDeviceToken(user.getId(), "fcm-phone");
+		insertDeviceToken(user.getId(), "fcm-tablet");
+
+		client.postJson(LOGOUT, """
+				{"refreshToken":"%s","fcmToken":"fcm-phone"}""".formatted(session.refreshToken()))
+			.andExpect(status().isNoContent());
+
+		await().atMost(Duration.ofSeconds(10))
+			.untilAsserted(() -> assertThat(deviceTokensOf(user.getId())).containsExactly("fcm-tablet"));
+	}
+
+	@Test
 	void logoutRevokesTheRefreshTokenAndIsIdempotent() throws Exception {
 		client.userWithPhone(phone);
 		Session session = client.loginSession(phone);
@@ -433,6 +471,21 @@ class AuthApiIntegrationTests {
 
 	private static String refreshJson(String refreshToken) {
 		return "{\"refreshToken\":\"" + refreshToken + "\"}";
+	}
+
+	private void insertDeviceToken(UUID userId, String fcmToken) {
+		jdbc.sql("INSERT INTO device_tokens (id, user_id, fcm_token) VALUES (:id, :userId, :fcmToken)")
+			.param("id", UUID.randomUUID())
+			.param("userId", userId)
+			.param("fcmToken", fcmToken)
+			.update();
+	}
+
+	private List<String> deviceTokensOf(UUID userId) {
+		return jdbc.sql("SELECT fcm_token FROM device_tokens WHERE user_id = :userId")
+			.param("userId", userId)
+			.query(String.class)
+			.list();
 	}
 
 }

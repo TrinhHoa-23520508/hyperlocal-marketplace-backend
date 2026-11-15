@@ -15,7 +15,9 @@ public final class IdentityParametersFixture {
 			Map.entry("auth.password_reset_ttl_minutes", "30"), Map.entry("consent.location_terms_version", "1.0"),
 			Map.entry("consent.terms_version", "1.0"), Map.entry("consent.privacy_version", "1.0"),
 			Map.entry("otp.ttl_s", "300"), Map.entry("otp.max_attempts", "5"), Map.entry("otp.resend_s", "60"),
-			Map.entry("otp.max_per_day", "5"), Map.entry("image.max_bytes", "5242880"));
+			Map.entry("otp.max_per_day", "5"), Map.entry("image.max_bytes", "5242880"),
+			Map.entry("auth.login_max_failed_per_ip", "20"), Map.entry("account.deletion_grace_days", "7"),
+			Map.entry("profile.display_name_change_days", "30"));
 
 	public static final Otp OTP = new Otp("test-otp-hash-secret-at-least-32-bytes!", "{code} la ma Nearby");
 

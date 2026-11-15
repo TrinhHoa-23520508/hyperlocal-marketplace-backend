@@ -62,7 +62,9 @@ public final class ErrorCodes {
 
 	public static final String INVALID_CREDENTIALS = "INVALID_CREDENTIALS";
 
-	public static final String ACCOUNT_LOCKED = "ACCOUNT_LOCKED";
+	public static final String ACCOUNT_SUSPENDED = "ACCOUNT_SUSPENDED";
+
+	public static final String ACCOUNT_BANNED = "ACCOUNT_BANNED";
 
 	public static final String INVALID_REFRESH_TOKEN = "INVALID_REFRESH_TOKEN";
 
@@ -84,9 +86,19 @@ public final class ErrorCodes {
 
 	public static final String CANNOT_LOCK_ADMIN = "CANNOT_LOCK_ADMIN";
 
-	public static final String ACCOUNT_ALREADY_LOCKED = "ACCOUNT_ALREADY_LOCKED";
+	public static final String ACCOUNT_STATUS_CONFLICT = "ACCOUNT_STATUS_CONFLICT";
 
-	public static final String ACCOUNT_NOT_LOCKED = "ACCOUNT_NOT_LOCKED";
+	public static final String INVALID_SUSPENSION_PERIOD = "INVALID_SUSPENSION_PERIOD";
+
+	public static final String ACCOUNT_DELETION_BLOCKED = "ACCOUNT_DELETION_BLOCKED";
+
+	public static final String CANNOT_DELETE_ADMIN = "CANNOT_DELETE_ADMIN";
+
+	public static final String NAME_CHANGE_TOO_SOON = "NAME_CHANGE_TOO_SOON";
+
+	public static final String CANNOT_BLOCK_SELF = "CANNOT_BLOCK_SELF";
+
+	public static final String CONTACT_NOT_ALLOWED = "CONTACT_NOT_ALLOWED";
 
 	private ErrorCodes() {
 	}

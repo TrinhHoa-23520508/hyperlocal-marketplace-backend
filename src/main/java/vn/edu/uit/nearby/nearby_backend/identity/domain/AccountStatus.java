@@ -1,56 +1,53 @@
 package vn.edu.uit.nearby.nearby_backend.identity.domain;
 
+import java.util.EnumSet;
+import java.util.Set;
+
 import vn.edu.uit.nearby.nearby_backend.shared.constant.ErrorCodes;
 import vn.edu.uit.nearby.nearby_backend.shared.error.ConflictException;
-import vn.edu.uit.nearby.nearby_backend.shared.error.OperationNotAllowedException;
 
 /**
- * Account state machine (SRS table 14): registration with a verified phone number creates
- * an ACTIVE account; ACTIVE --lock--> BANNED; BANNED --unlock--> ACTIVE.
+ * Account state machine (SRS table 14, FR-ID-19). Every move not listed in the table is a
+ * conflict.
  */
 public enum AccountStatus {
 
-	ACTIVE {
-		@Override
-		public void ensureCanLogIn() {
+	ACTIVE, SUSPENDED, BANNED, PENDING_DELETION, DELETED;
+
+	public AccountStatus afterSuspension() {
+		return moveTo(SUSPENDED, EnumSet.of(ACTIVE));
+	}
+
+	public AccountStatus afterBan() {
+		return moveTo(BANNED, EnumSet.of(ACTIVE, SUSPENDED));
+	}
+
+	public AccountStatus afterSanctionLifted() {
+		return moveTo(ACTIVE, EnumSet.of(SUSPENDED, BANNED));
+	}
+
+	public AccountStatus afterDeletionRequested() {
+		return moveTo(PENDING_DELETION, EnumSet.of(ACTIVE));
+	}
+
+	public AccountStatus afterDeletionCancelled() {
+		return moveTo(ACTIVE, EnumSet.of(PENDING_DELETION));
+	}
+
+	public AccountStatus afterAnonymisation() {
+		return moveTo(DELETED, EnumSet.of(PENDING_DELETION));
+	}
+
+	public boolean isSanctioned() {
+		return this == SUSPENDED || this == BANNED;
+	}
+
+	private AccountStatus moveTo(AccountStatus target, Set<AccountStatus> allowedSources) {
+		if (!allowedSources.contains(this)) {
+			throw new ConflictException(ErrorCodes.ACCOUNT_STATUS_CONFLICT,
+					"An account that is " + this + " cannot become " + target + ".");
 		}
-
-		@Override
-		public AccountStatus afterLock() {
-			return BANNED;
-		}
-
-		@Override
-		public AccountStatus afterUnlock() {
-			throw new ConflictException(ErrorCodes.ACCOUNT_NOT_LOCKED, "The account is not locked.");
-		}
-	},
-
-	BANNED {
-		@Override
-		public void ensureCanLogIn() {
-			throw new OperationNotAllowedException(ErrorCodes.ACCOUNT_LOCKED, "This account cannot log in.");
-		}
-
-		@Override
-		public AccountStatus afterLock() {
-			throw new ConflictException(ErrorCodes.ACCOUNT_ALREADY_LOCKED, "The account is already locked.");
-		}
-
-		@Override
-		public AccountStatus afterUnlock() {
-			return ACTIVE;
-		}
-	};
-
-	public abstract void ensureCanLogIn();
-
-	public abstract AccountStatus afterLock();
-
-	public abstract AccountStatus afterUnlock();
-
-	public boolean isLocked() {
-		return this == BANNED;
+		return target;
 	}
 
 }

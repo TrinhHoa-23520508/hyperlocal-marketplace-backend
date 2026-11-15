@@ -3,8 +3,8 @@ package vn.edu.uit.nearby.nearby_backend.identity.application.admin;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-import vn.edu.uit.nearby.nearby_backend.identity.UserBanned;
-import vn.edu.uit.nearby.nearby_backend.identity.UserUnbanned;
+import vn.edu.uit.nearby.nearby_backend.identity.SanctionLifted;
+import vn.edu.uit.nearby.nearby_backend.identity.UserSanctioned;
 import vn.edu.uit.nearby.nearby_backend.identity.application.port.LockedAccountRegistry;
 
 /**
@@ -21,12 +21,12 @@ public class LockedAccountSynchronizer {
 	}
 
 	@TransactionalEventListener
-	void onUserBanned(UserBanned event) {
+	void onUserSanctioned(UserSanctioned event) {
 		lockedAccounts.markLocked(event.userId());
 	}
 
 	@TransactionalEventListener
-	void onUserUnbanned(UserUnbanned event) {
+	void onSanctionLifted(SanctionLifted event) {
 		lockedAccounts.clear(event.userId());
 	}
 

@@ -11,11 +11,13 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import vn.edu.uit.nearby.nearby_backend.identity.UserBanned;
-import vn.edu.uit.nearby.nearby_backend.identity.UserUnbanned;
+import vn.edu.uit.nearby.nearby_backend.identity.SanctionLifted;
+import vn.edu.uit.nearby.nearby_backend.identity.SanctionType;
+import vn.edu.uit.nearby.nearby_backend.identity.UserSanctioned;
 import vn.edu.uit.nearby.nearby_backend.identity.application.auth.UserSessions;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.AuditAction;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.RevokeReason;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.SuspensionPeriod;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserSpecifications;
@@ -75,10 +77,26 @@ public class UserAdministrationServiceImpl implements UserAdministrationService 
 		User user = users.getRequired(userId);
 		requireLockable(adminId, user);
 		Instant now = clock.instant();
-		user.lock(now);
+		user.ban(now);
 		sessions.endAll(userId, RevokeReason.SANCTION);
 		auditLog.recordUserAction(adminId, AuditAction.USER_LOCKED, userId, Map.of(REASON, reason));
-		events.publishEvent(new UserBanned(userId, now));
+		events.publishEvent(new UserSanctioned(userId, SanctionType.BAN, null, now));
+		return AdminUserView.of(user);
+	}
+
+	@Override
+	@Transactional
+	public AdminUserView suspendUser(SuspendUserCommand command) {
+		SuspensionPeriod period = SuspensionPeriod.ofDays(command.days());
+		User user = users.getRequired(command.userId());
+		requireLockable(command.adminId(), user);
+		Instant now = clock.instant();
+		Instant until = period.endFrom(now);
+		user.suspend(until, now);
+		sessions.endAll(user.getId(), RevokeReason.SANCTION);
+		auditLog.recordUserAction(command.adminId(), AuditAction.USER_SUSPENDED, user.getId(),
+				Map.of(REASON, command.reason(), "until", until.toString()));
+		events.publishEvent(new UserSanctioned(user.getId(), SanctionType.SUSPENSION, until, now));
 		return AdminUserView.of(user);
 	}
 
@@ -87,9 +105,9 @@ public class UserAdministrationServiceImpl implements UserAdministrationService 
 	public AdminUserView unlockUser(UUID adminId, UUID userId, String reason) {
 		User user = users.getRequired(userId);
 		Instant now = clock.instant();
-		user.unlock(now);
+		user.liftSanction(now);
 		auditLog.recordUserAction(adminId, AuditAction.USER_UNLOCKED, userId, Map.of(REASON, reason));
-		events.publishEvent(new UserUnbanned(userId, now));
+		events.publishEvent(new SanctionLifted(userId, now));
 		return AdminUserView.of(user);
 	}
 

@@ -11,6 +11,6 @@ import vn.edu.uit.nearby.nearby_backend.shared.geo.GeoPoint;
 
 public record UserProfile(UUID id, @Nullable String phone, @Nullable String email, String displayName,
 		@Nullable String avatarUrl, UserRole role, AccountStatus status, @Nullable GeoPoint homeArea,
-		boolean phoneVerified, boolean emailVerified, Instant createdAt) {
+		boolean phoneVerified, boolean emailVerified, Instant createdAt, @Nullable Instant displayNameChangeAllowedAt) {
 
 }

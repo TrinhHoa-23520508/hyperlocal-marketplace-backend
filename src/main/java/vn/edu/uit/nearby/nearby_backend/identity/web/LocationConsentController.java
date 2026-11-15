@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import vn.edu.uit.nearby.nearby_backend.identity.application.consent.LocationConsentService;
@@ -37,6 +38,7 @@ public class LocationConsentController {
 
 	@Operation(summary = "Give consent to the current terms version")
 	@PutMapping
+	@ApiResponse(responseCode = "400", description = "OUTDATED_TERMS_VERSION: termsVersion is not the current one")
 	public LocationConsentResponse grantConsent(@Valid @RequestBody LocationConsentRequest request) {
 		return LocationConsentResponse
 			.from(consentService.grantConsent(CurrentUser.requireId(), request.termsVersion()));

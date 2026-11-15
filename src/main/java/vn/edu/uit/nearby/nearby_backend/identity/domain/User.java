@@ -1,7 +1,9 @@
 package vn.edu.uit.nearby.nearby_backend.identity.domain;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,6 +21,9 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import vn.edu.uit.nearby.nearby_backend.shared.constant.ErrorCodes;
+import vn.edu.uit.nearby.nearby_backend.shared.error.UnprocessableRequestException;
+
 /**
  * Account identified by a verified Vietnamese mobile number (ADR-18); the email address
  * is an optional second channel that counts only once verified (FR-ID-09).
@@ -28,6 +33,8 @@ import lombok.NoArgsConstructor;
 @Table(name = "users")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User {
+
+	public static final String DELETED_DISPLAY_NAME = "Người dùng đã xoá";
 
 	@Id
 	private UUID id;
@@ -55,6 +62,9 @@ public class User {
 	@Column(name = "display_name", nullable = false)
 	private String displayName;
 
+	@Column(name = "display_name_changed_at")
+	private @Nullable Instant displayNameChangedAt;
+
 	@Column(name = "avatar_key")
 	private @Nullable String avatarKey;
 
@@ -65,6 +75,15 @@ public class User {
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false)
 	private AccountStatus status;
+
+	@Column(name = "suspended_until")
+	private @Nullable Instant suspendedUntil;
+
+	@Column(name = "deletion_requested_at")
+	private @Nullable Instant deletionRequestedAt;
+
+	@Column(name = "anonymised_at")
+	private @Nullable Instant anonymisedAt;
 
 	@Getter(AccessLevel.NONE)
 	@Column(name = "home_area", columnDefinition = "geography(Point,4326)")
@@ -131,8 +150,12 @@ public class User {
 		return email != null && emailVerifiedAt != null;
 	}
 
-	public boolean isLocked() {
-		return status.isLocked();
+	public boolean isSanctioned() {
+		return status.isSanctioned();
+	}
+
+	public boolean isDeleted() {
+		return status == AccountStatus.DELETED;
 	}
 
 	/**
@@ -163,18 +186,37 @@ public class User {
 		return true;
 	}
 
-	public void ensureCanLogIn() {
-		status.ensureCanLogIn();
-	}
-
 	public void changePassword(String newPasswordHash, Instant now) {
 		passwordHash = newPasswordHash;
 		passwordChangedAt = now;
 		touch(now);
 	}
 
-	public void updateProfile(String newDisplayName, @Nullable HomeArea newHomeArea, Instant now) {
+	/**
+	 * Renames the account at most once per {@code minimumInterval} (FR-ID-11). Sending
+	 * the current name again is not a change.
+	 * @throws UnprocessableRequestException {@code NAME_CHANGE_TOO_SOON} with
+	 * {@code nextAllowedAt}
+	 */
+	public void rename(String newDisplayName, Duration minimumInterval, Instant now) {
+		if (newDisplayName.equals(displayName)) {
+			return;
+		}
+		Optional<Instant> nextAllowedAt = nextRenameAllowedAt(minimumInterval).filter(now::isBefore);
+		if (nextAllowedAt.isPresent()) {
+			throw new UnprocessableRequestException(ErrorCodes.NAME_CHANGE_TOO_SOON,
+					"The display name can be changed again later.", Map.of("nextAllowedAt", nextAllowedAt.get()));
+		}
 		displayName = newDisplayName;
+		displayNameChangedAt = now;
+		touch(now);
+	}
+
+	public Optional<Instant> nextRenameAllowedAt(Duration minimumInterval) {
+		return Optional.ofNullable(displayNameChangedAt).map(changedAt -> changedAt.plus(minimumInterval));
+	}
+
+	public void moveHomeArea(@Nullable HomeArea newHomeArea, Instant now) {
 		homeArea = newHomeArea == null ? null : newHomeArea.toPoint();
 		touch(now);
 	}
@@ -203,14 +245,75 @@ public class User {
 		return previous;
 	}
 
-	public void lock(Instant now) {
-		status = status.afterLock();
+	public void suspend(Instant until, Instant now) {
+		status = status.afterSuspension();
+		suspendedUntil = until;
 		touch(now);
 	}
 
-	public void unlock(Instant now) {
-		status = status.afterUnlock();
+	public void ban(Instant now) {
+		status = status.afterBan();
+		suspendedUntil = null;
 		touch(now);
+	}
+
+	public void liftSanction(Instant now) {
+		status = status.afterSanctionLifted();
+		suspendedUntil = null;
+		touch(now);
+	}
+
+	public boolean isSuspensionOverAt(Instant now) {
+		return suspendedUntil != null && !now.isBefore(suspendedUntil);
+	}
+
+	public void requestDeletion(Instant now) {
+		status = status.afterDeletionRequested();
+		deletionRequestedAt = now;
+		touch(now);
+	}
+
+	public void cancelDeletion(Instant now) {
+		status = status.afterDeletionCancelled();
+		deletionRequestedAt = null;
+		touch(now);
+	}
+
+	/**
+	 * Lifts an expired suspension or cancels a pending deletion, the two states a
+	 * successful login ends (FR-ID-03, FR-ID-19).
+	 */
+	public Optional<LoginReactivation> reactivateOnLogin(Instant now) {
+		if (isSuspensionOverAt(now)) {
+			liftSanction(now);
+			return Optional.of(LoginReactivation.SUSPENSION_ENDED);
+		}
+		if (status == AccountStatus.PENDING_DELETION) {
+			cancelDeletion(now);
+			return Optional.of(LoginReactivation.DELETION_CANCELLED);
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * Removes every personal field once the deletion grace period is over (FR-ID-16). The
+	 * password is replaced by one nobody knows.
+	 * @return the key of the removed avatar, so the caller can delete it
+	 */
+	public Optional<String> anonymise(String unusablePasswordHash, Instant now) {
+		status = status.afterAnonymisation();
+		Optional<String> previousAvatar = Optional.ofNullable(avatarKey);
+		phoneE164 = null;
+		phoneVerifiedAt = null;
+		email = null;
+		emailVerifiedAt = null;
+		passwordHash = unusablePasswordHash;
+		displayName = DELETED_DISPLAY_NAME;
+		avatarKey = null;
+		homeArea = null;
+		anonymisedAt = now;
+		touch(now);
+		return previousAvatar;
 	}
 
 	private void touch(Instant now) {

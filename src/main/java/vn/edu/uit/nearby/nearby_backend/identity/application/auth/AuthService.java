@@ -1,6 +1,9 @@
 package vn.edu.uit.nearby.nearby_backend.identity.application.auth;
 
+import org.jspecify.annotations.Nullable;
+
 import vn.edu.uit.nearby.nearby_backend.shared.error.AuthenticationFailedException;
+import vn.edu.uit.nearby.nearby_backend.shared.error.OperationNotAllowedException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.RateLimitExceededException;
 
 public interface AuthService {
@@ -9,7 +12,10 @@ public interface AuthService {
 	 * Logs in with the phone number or a verified email address (FR-ID-03).
 	 * @throws AuthenticationFailedException {@code INVALID_CREDENTIALS} for an unknown
 	 * identifier, an unverified email or a wrong password, without telling which
-	 * @throws RateLimitExceededException {@code LOGIN_LOCKED} after too many failures
+	 * @throws RateLimitExceededException {@code LOGIN_LOCKED} after too many failures for
+	 * the identifier or the client IP
+	 * @throws OperationNotAllowedException {@code ACCOUNT_SUSPENDED} or
+	 * {@code ACCOUNT_BANNED} with the reason, for the right password only
 	 */
 	TokenPair login(LoginCommand command);
 
@@ -21,9 +27,9 @@ public interface AuthService {
 	TokenPair refresh(String refreshToken);
 
 	/**
-	 * Revokes the refresh token. Unknown, expired or revoked tokens are already logged
-	 * out.
+	 * Revokes the refresh token and stops pushes to the device's FCM token. Unknown,
+	 * expired or revoked tokens are already logged out.
 	 */
-	void logout(String refreshToken);
+	void logout(String refreshToken, @Nullable String fcmToken);
 
 }

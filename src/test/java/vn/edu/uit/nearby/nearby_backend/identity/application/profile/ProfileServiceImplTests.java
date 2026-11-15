@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import static vn.edu.uit.nearby.nearby_backend.identity.domain.UserFixtures.NOW;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
@@ -31,6 +32,7 @@ import vn.edu.uit.nearby.nearby_backend.identity.domain.UserFixtures;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.error.BusinessException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
+import vn.edu.uit.nearby.nearby_backend.shared.error.UnprocessableRequestException;
 import vn.edu.uit.nearby.nearby_backend.shared.geo.GeoPoint;
 import vn.edu.uit.nearby.nearby_backend.shared.storage.ImageStorage;
 import vn.edu.uit.nearby.nearby_backend.shared.storage.ImageStorage.PresignedUrl;
@@ -106,6 +108,53 @@ class ProfileServiceImplTests {
 	}
 
 	@Test
+	void secondRenameWithinThirtyDaysIsRejectedAndTheProfileSaysWhenItIsAllowed() {
+		givenUserExists();
+
+		UserProfile renamed = profileService.updateProfile(user.getId(), new UpdateProfileCommand("Binh", null));
+
+		assertThat(renamed.displayNameChangeAllowedAt()).isEqualTo(NOW.plus(Duration.ofDays(30)));
+		assertThatThrownBy(() -> profileService.updateProfile(user.getId(), new UpdateProfileCommand("Chi", null)))
+			.isInstanceOf(UnprocessableRequestException.class)
+			.extracting(this::codeOf)
+			.isEqualTo("NAME_CHANGE_TOO_SOON");
+	}
+
+	@Test
+	void profileOfANeverRenamedUserCanBeRenamedNow() {
+		givenUserExists();
+
+		assertThat(profileService.getProfile(user.getId()).displayNameChangeAllowedAt()).isNull();
+	}
+
+	@Test
+	void publicProfileShowsNameAvatarBadgeAndJoinDateOnly() {
+		givenUserExists();
+		user.replaceAvatar("avatars/a.jpg", NOW);
+		when(storage.presignDownload("avatars/a.jpg"))
+			.thenReturn(new PresignedUrl("https://storage/a.jpg", "GET", NOW.plusSeconds(600)));
+
+		PublicProfile profile = profileService.getPublicProfile(user.getId());
+
+		assertThat(profile).isEqualTo(new PublicProfile(user.getId(), UserFixtures.DISPLAY_NAME,
+				"https://storage/a.jpg", true, user.getCreatedAt(), false));
+	}
+
+	@Test
+	void publicProfileOfADeletedAccountIsAnonymous() {
+		user.requestDeletion(NOW);
+		user.anonymise("unusable", NOW);
+		givenUserExists();
+
+		PublicProfile profile = profileService.getPublicProfile(user.getId());
+
+		assertThat(profile.displayName()).isEqualTo(User.DELETED_DISPLAY_NAME);
+		assertThat(profile.avatarUrl()).isNull();
+		assertThat(profile.phoneVerified()).isFalse();
+		assertThat(profile.deleted()).isTrue();
+	}
+
+	@Test
 	void uploadUrlIsIssuedForAnObjectKeyInTheUsersAvatarFolder() {
 		when(storage.presignUpload(anyString(), any()))
 			.thenAnswer(call -> new PresignedUrl("https://upload/" + call.getArgument(0), "PUT", NOW));
@@ -117,6 +166,19 @@ class ProfileServiceImplTests {
 		assertThat(upload.uploadUrl()).isEqualTo("https://upload/" + upload.objectKey());
 		assertThat(upload.method()).isEqualTo("PUT");
 		assertThat(upload.requiredHeaders()).isEqualTo(Map.of("Content-Type", "image/webp"));
+	}
+
+	@Test
+	void jpgUploadIsSignedWithTheStandardJpegType() {
+		when(storage.presignUpload(anyString(), any()))
+			.thenAnswer(call -> new PresignedUrl("https://upload/" + call.getArgument(0), "PUT", NOW));
+
+		AvatarUpload upload = profileService.createAvatarUpload(user.getId(),
+				new AvatarUploadCommand("image/jpg", 1024));
+
+		assertThat(upload.objectKey()).endsWith(".jpg");
+		verify(storage).presignUpload(upload.objectKey(), "image/jpeg");
+		assertThat(upload.requiredHeaders()).isEqualTo(Map.of("Content-Type", "image/jpeg"));
 	}
 
 	@Test

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import vn.edu.uit.nearby.nearby_backend.identity.application.profile.ProfileService;
@@ -41,12 +42,15 @@ public class ProfileController {
 
 	@Operation(summary = "Update display name and default area; the area is rounded before it is stored")
 	@PutMapping
+	@ApiResponse(responseCode = "422",
+			description = "NAME_CHANGE_TOO_SOON: nextAllowedAt says when the name can change again")
 	public ProfileResponse updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
 		return ProfileResponse.from(profileService.updateProfile(CurrentUser.requireId(), request.toCommand()));
 	}
 
 	@Operation(summary = "Step 1 of an avatar change: get a presigned upload URL")
 	@PostMapping("/avatar/upload-url")
+	@ApiResponse(responseCode = "400", description = "INVALID_IMAGE: not JPEG, PNG or WebP, or over 5 MB")
 	public AvatarUploadUrlResponse createAvatarUploadUrl(@Valid @RequestBody AvatarUploadUrlRequest request) {
 		return AvatarUploadUrlResponse
 			.from(profileService.createAvatarUpload(CurrentUser.requireId(), request.toCommand()));
@@ -54,6 +58,8 @@ public class ProfileController {
 
 	@Operation(summary = "Step 2 of an avatar change: confirm the uploaded image")
 	@PutMapping("/avatar")
+	@ApiResponse(responseCode = "400",
+			description = "INVALID_AVATAR_KEY | AVATAR_NOT_UPLOADED | INVALID_IMAGE (the upload is deleted)")
 	public ProfileResponse confirmAvatar(@Valid @RequestBody ConfirmAvatarRequest request) {
 		return ProfileResponse.from(profileService.confirmAvatar(CurrentUser.requireId(), request.objectKey()));
 	}

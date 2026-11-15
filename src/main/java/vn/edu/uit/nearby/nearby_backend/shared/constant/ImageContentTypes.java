@@ -14,6 +14,11 @@ public final class ImageContentTypes {
 
 	public static final Map<String, String> FILE_EXTENSIONS = Map.of(JPEG, "jpg", PNG, "png", WEBP, "webp");
 
+	/**
+	 * Non-standard names some clients send for a supported format.
+	 */
+	public static final Map<String, String> ALIASES = Map.of("image/jpg", JPEG, "image/pjpeg", JPEG);
+
 	private ImageContentTypes() {
 	}
 
