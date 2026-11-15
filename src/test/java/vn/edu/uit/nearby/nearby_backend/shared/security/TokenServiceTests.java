@@ -12,6 +12,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
 
 import vn.edu.uit.nearby.nearby_backend.shared.constant.Roles;
@@ -70,6 +71,30 @@ class TokenServiceTests {
 	@Test
 	void refreshTokensAreUnique() {
 		assertThat(tokenService.issueRefreshToken().value()).isNotEqualTo(tokenService.issueRefreshToken().value());
+	}
+
+	@Test
+	void sessionIdIsCarriedOnlyWhenGiven() {
+		UUID sessionId = UUID.randomUUID();
+
+		JwtDecoder decoderAtIssueTime = JwtFixture.tokenDecoderAt(Clock.fixed(NOW, ZoneOffset.UTC));
+
+		Jwt withSession = decoderAtIssueTime
+			.decode(tokenService.issueAccessToken(UUID.randomUUID(), Roles.USER, sessionId).value());
+		Jwt withoutSession = decoderAtIssueTime
+			.decode(tokenService.issueAccessToken(UUID.randomUUID(), Roles.USER).value());
+
+		assertThat(withSession.getClaimAsString(SecurityConstants.SESSION_CLAIM)).isEqualTo(sessionId.toString());
+		assertThat(withoutSession.hasClaim(SecurityConstants.SESSION_CLAIM)).isFalse();
+	}
+
+	@Test
+	void hmacDependsOnTheSecretAndTheValue() {
+		String hash = TokenService.hmacSha256Hex("secret-one", "123456");
+
+		assertThat(hash).hasSize(64).isEqualTo(TokenService.hmacSha256Hex("secret-one", "123456"));
+		assertThat(hash).isNotEqualTo(TokenService.hmacSha256Hex("secret-two", "123456"))
+			.isNotEqualTo(TokenService.hmacSha256Hex("secret-one", "123457"));
 	}
 
 	@Test

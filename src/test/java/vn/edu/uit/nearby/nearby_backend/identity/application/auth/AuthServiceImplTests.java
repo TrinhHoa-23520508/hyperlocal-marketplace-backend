@@ -26,6 +26,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.PhoneNumber;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.RevokeReason;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.StoredRefreshToken;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.StoredRefreshToken.RefreshTokenFamily;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
@@ -34,6 +36,7 @@ import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.RefreshTokenRepo
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.error.AuthenticationFailedException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.BusinessException;
+import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.OperationNotAllowedException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.RateLimitExceededException;
 import vn.edu.uit.nearby.nearby_backend.shared.security.TokenService;
@@ -46,6 +49,8 @@ class AuthServiceImplTests {
 	private static final String DUMMY_HASH = "{bcrypt}dummy";
 
 	private static final String RAW_REFRESH_TOKEN = "raw-refresh-token";
+
+	private static final PhoneNumber PHONE = PhoneNumber.of(UserFixtures.PHONE);
 
 	private static final TokenPair TOKENS = new TokenPair("access", NOW.plus(Duration.ofMinutes(15)), "refresh",
 			NOW.plus(Duration.ofDays(30)));
@@ -75,22 +80,32 @@ class AuthServiceImplTests {
 	}
 
 	@Test
-	void correctPasswordStartsASessionAndClearsFailures() {
+	void correctPasswordForThePhoneNumberStartsASessionAndClearsFailures() {
 		User user = UserFixtures.activeUser();
+		when(users.findByPhoneE164(UserFixtures.PHONE)).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches(PASSWORD, UserFixtures.PASSWORD_HASH)).thenReturn(true);
+		when(sessions.start(user)).thenReturn(TOKENS);
+
+		TokenPair tokens = authService.login(new LoginCommand("0912 345 678", PASSWORD));
+
+		assertThat(tokens).isEqualTo(TOKENS);
+		verify(loginAttempts).clearFailures(PHONE);
+	}
+
+	@Test
+	void verifiedEmailCanBeUsedToLogIn() {
+		User user = UserFixtures.userWithVerifiedEmail();
 		when(users.findByEmail(UserFixtures.EMAIL)).thenReturn(Optional.of(user));
 		when(passwordEncoder.matches(PASSWORD, UserFixtures.PASSWORD_HASH)).thenReturn(true);
 		when(sessions.start(user)).thenReturn(TOKENS);
 
-		TokenPair tokens = authService.login(new LoginCommand(" An.Nguyen@Example.com", PASSWORD));
-
-		assertThat(tokens).isEqualTo(TOKENS);
-		verify(loginAttempts).clearFailures(EmailAddress.of(UserFixtures.EMAIL));
+		assertThat(authService.login(new LoginCommand(" An.Nguyen@Example.com", PASSWORD))).isEqualTo(TOKENS);
 	}
 
 	@Test
-	void wrongPasswordIsRecordedAsAFailedAttempt() {
-		when(users.findByEmail(UserFixtures.EMAIL)).thenReturn(Optional.of(UserFixtures.activeUser()));
-		when(passwordEncoder.matches(PASSWORD, UserFixtures.PASSWORD_HASH)).thenReturn(false);
+	void unverifiedEmailCannotBeUsedToLogInEvenWithTheRightPassword() {
+		when(users.findByEmail(UserFixtures.EMAIL)).thenReturn(Optional.of(UserFixtures.userWithUnverifiedEmail()));
+		when(passwordEncoder.matches(PASSWORD, DUMMY_HASH)).thenReturn(false);
 
 		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.EMAIL, PASSWORD)))
 			.isInstanceOf(AuthenticationFailedException.class)
@@ -101,48 +116,68 @@ class AuthServiceImplTests {
 	}
 
 	@Test
-	void unknownEmailStillChecksAPasswordAndFailsTheSameWay() {
-		when(users.findByEmail(UserFixtures.EMAIL)).thenReturn(Optional.empty());
+	void wrongPasswordIsRecordedAsAFailedAttempt() {
+		when(users.findByPhoneE164(UserFixtures.PHONE)).thenReturn(Optional.of(UserFixtures.activeUser()));
+		when(passwordEncoder.matches(PASSWORD, UserFixtures.PASSWORD_HASH)).thenReturn(false);
 
-		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.EMAIL, PASSWORD)))
+		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD)))
 			.isInstanceOf(AuthenticationFailedException.class)
-			.hasMessage("Email or password is incorrect.");
-		verify(passwordEncoder).matches(PASSWORD, DUMMY_HASH);
-		verify(loginAttempts).recordFailure(EmailAddress.of(UserFixtures.EMAIL));
+			.extracting(AuthServiceImplTests::codeOf)
+			.isEqualTo("INVALID_CREDENTIALS");
+		verify(loginAttempts).recordFailure(PHONE);
+		verifyNoInteractions(sessions);
 	}
 
 	@Test
-	void blockedEmailIsRejectedBeforeThePasswordIsChecked() {
-		doThrow(new RateLimitExceededException(Duration.ofMinutes(10))).when(loginAttempts)
-			.ensureNotBlocked(EmailAddress.of(UserFixtures.EMAIL));
+	void unknownPhoneStillChecksAPasswordAndFailsTheSameWay() {
+		when(users.findByPhoneE164(UserFixtures.PHONE)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.EMAIL, PASSWORD)))
+		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD)))
+			.isInstanceOf(AuthenticationFailedException.class)
+			.hasMessage("Phone number, email or password is incorrect.");
+		verify(passwordEncoder).matches(PASSWORD, DUMMY_HASH);
+		verify(loginAttempts).recordFailure(PHONE);
+	}
+
+	@Test
+	void blockedIdentifierIsRejectedBeforeThePasswordIsChecked() {
+		doThrow(new RateLimitExceededException("LOGIN_LOCKED", "locked", Duration.ofMinutes(10))).when(loginAttempts)
+			.ensureNotBlocked(PHONE);
+
+		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD)))
 			.isInstanceOf(RateLimitExceededException.class);
 		verify(passwordEncoder, never()).matches(anyString(), anyString());
 	}
 
 	@Test
-	void unverifiedAccountCannotLogInEvenWithTheRightPassword() {
-		when(users.findByEmail(UserFixtures.EMAIL)).thenReturn(Optional.of(UserFixtures.pendingUser()));
+	void lockedAccountCannotLogInEvenWithTheRightPassword() {
+		when(users.findByPhoneE164(UserFixtures.PHONE)).thenReturn(Optional.of(UserFixtures.lockedUser()));
 		when(passwordEncoder.matches(PASSWORD, UserFixtures.PASSWORD_HASH)).thenReturn(true);
 
-		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.EMAIL, PASSWORD)))
+		assertThatThrownBy(() -> authService.login(new LoginCommand(UserFixtures.PHONE, PASSWORD)))
 			.isInstanceOf(OperationNotAllowedException.class)
 			.extracting(AuthServiceImplTests::codeOf)
-			.isEqualTo("EMAIL_NOT_VERIFIED");
+			.isEqualTo("ACCOUNT_LOCKED");
 		verifyNoInteractions(sessions);
+	}
+
+	@Test
+	void malformedPhoneIsRejectedBeforeAnyLookup() {
+		assertThatThrownBy(() -> authService.login(new LoginCommand("12345", PASSWORD)))
+			.isInstanceOf(InvalidRequestException.class);
+		verifyNoInteractions(users, loginAttempts);
 	}
 
 	@Test
 	void validRefreshTokenIsRevokedAndRotatedWithinItsFamily() {
 		User user = UserFixtures.activeUser();
 		StoredRefreshToken stored = storedToken(user);
-		when(refreshTokens.revokeIfActive(stored.getId(), NOW)).thenReturn(1);
+		when(refreshTokens.revokeIfActive(stored.getId(), NOW, RevokeReason.ROTATED)).thenReturn(1);
 		when(users.getRequired(stored.getUserId())).thenReturn(user);
 		when(sessions.rotate(user, stored.family())).thenReturn(TOKENS);
 
 		assertThat(authService.refresh(RAW_REFRESH_TOKEN)).isEqualTo(TOKENS);
-		verify(refreshTokens, never()).revokeFamily(any(), any());
+		verify(refreshTokens, never()).revokeFamily(any(), any(), any());
 	}
 
 	@Test
@@ -163,7 +198,7 @@ class AuthServiceImplTests {
 
 		assertThatThrownBy(() -> authService.refresh(RAW_REFRESH_TOKEN)).extracting(AuthServiceImplTests::codeOf)
 			.isEqualTo("INVALID_REFRESH_TOKEN");
-		verify(refreshTokens, never()).revokeFamily(any(), any());
+		verify(refreshTokens, never()).revokeFamily(any(), any(), any());
 	}
 
 	@Test
@@ -175,25 +210,25 @@ class AuthServiceImplTests {
 			.isInstanceOf(AuthenticationFailedException.class)
 			.extracting(AuthServiceImplTests::codeOf)
 			.isEqualTo("REFRESH_TOKEN_REUSED");
-		verify(refreshTokens).revokeFamily(stored.getFamilyId(), NOW);
+		verify(refreshTokens).revokeFamily(stored.getFamilyId(), NOW, RevokeReason.REUSE_DETECTED);
 		verifyNoInteractions(sessions);
 	}
 
 	@Test
 	void losingAConcurrentRefreshIsTreatedAsReuse() {
 		StoredRefreshToken stored = storedToken(UserFixtures.activeUser());
-		when(refreshTokens.revokeIfActive(stored.getId(), NOW)).thenReturn(0);
+		when(refreshTokens.revokeIfActive(stored.getId(), NOW, RevokeReason.ROTATED)).thenReturn(0);
 
 		assertThatThrownBy(() -> authService.refresh(RAW_REFRESH_TOKEN)).extracting(AuthServiceImplTests::codeOf)
 			.isEqualTo("REFRESH_TOKEN_REUSED");
-		verify(refreshTokens).revokeFamily(stored.getFamilyId(), NOW);
+		verify(refreshTokens).revokeFamily(stored.getFamilyId(), NOW, RevokeReason.REUSE_DETECTED);
 	}
 
 	@Test
 	void lockedAccountCannotRefresh() {
 		User user = UserFixtures.lockedUser();
 		StoredRefreshToken stored = storedToken(user);
-		when(refreshTokens.revokeIfActive(stored.getId(), NOW)).thenReturn(1);
+		when(refreshTokens.revokeIfActive(stored.getId(), NOW, RevokeReason.ROTATED)).thenReturn(1);
 		when(users.getRequired(stored.getUserId())).thenReturn(user);
 
 		assertThatThrownBy(() -> authService.refresh(RAW_REFRESH_TOKEN)).extracting(AuthServiceImplTests::codeOf)
@@ -206,7 +241,7 @@ class AuthServiceImplTests {
 
 		authService.logout(RAW_REFRESH_TOKEN);
 
-		verify(refreshTokens).revokeIfActive(stored.getId(), NOW);
+		verify(refreshTokens).revokeIfActive(stored.getId(), NOW, RevokeReason.LOGOUT);
 	}
 
 	@Test
@@ -215,7 +250,7 @@ class AuthServiceImplTests {
 
 		authService.logout(RAW_REFRESH_TOKEN);
 
-		verify(refreshTokens, never()).revokeIfActive(any(), any());
+		verify(refreshTokens, never()).revokeIfActive(any(), any(), any());
 	}
 
 	private StoredRefreshToken storedToken(User user) {

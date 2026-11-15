@@ -2,6 +2,7 @@ package vn.edu.uit.nearby.nearby_backend.identity.application.consent;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.context.ApplicationEventPublisher;
@@ -11,8 +12,11 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.edu.uit.nearby.nearby_backend.identity.LocationConsentWithdrawn;
 import vn.edu.uit.nearby.nearby_backend.identity.LocationConsents;
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityParameters;
-import vn.edu.uit.nearby.nearby_backend.identity.domain.LocationConsent;
-import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.consent.ConsentChannel;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.consent.ConsentGrant;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.consent.ConsentPurpose;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.consent.UserConsent;
+import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserConsentRepository;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.constant.ErrorCodes;
 import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
@@ -22,15 +26,18 @@ public class LocationConsentServiceImpl implements LocationConsentService, Locat
 
 	private final UserRepository users;
 
+	private final UserConsentRepository consents;
+
 	private final IdentityParameters parameters;
 
 	private final ApplicationEventPublisher events;
 
 	private final Clock clock;
 
-	public LocationConsentServiceImpl(UserRepository users, IdentityParameters parameters,
-			ApplicationEventPublisher events, Clock clock) {
+	public LocationConsentServiceImpl(UserRepository users, UserConsentRepository consents,
+			IdentityParameters parameters, ApplicationEventPublisher events, Clock clock) {
 		this.users = users;
+		this.consents = consents;
 		this.parameters = parameters;
 		this.events = events;
 		this.clock = clock;
@@ -40,15 +47,14 @@ public class LocationConsentServiceImpl implements LocationConsentService, Locat
 	@Transactional(readOnly = true)
 	public boolean hasConsented(UUID userId) {
 		String currentTermsVersion = parameters.locationTermsVersion();
-		return users.findById(userId)
-			.map(user -> user.locationConsent().isActiveFor(currentTermsVersion))
-			.orElse(false);
+		return currentConsent(userId).filter(consent -> consent.isActiveFor(currentTermsVersion)).isPresent();
 	}
 
 	@Override
 	@Transactional(readOnly = true)
 	public LocationConsentStatus getConsent(UUID userId) {
-		return statusOf(users.getRequired(userId).locationConsent(), parameters.locationTermsVersion());
+		users.getRequired(userId);
+		return statusOf(currentConsent(userId), parameters.locationTermsVersion());
 	}
 
 	@Override
@@ -59,26 +65,36 @@ public class LocationConsentServiceImpl implements LocationConsentService, Locat
 			throw new InvalidRequestException(ErrorCodes.OUTDATED_TERMS_VERSION,
 					"Consent must be given to the current terms version " + currentTermsVersion + ".");
 		}
-		User user = users.getRequired(userId);
-		user.grantLocationConsent(termsVersion, clock.instant());
-		return statusOf(user.locationConsent(), currentTermsVersion);
+		users.getRequired(userId);
+		Instant now = clock.instant();
+		currentConsent(userId).ifPresent(previous -> previous.withdraw(now));
+		UserConsent granted = consents.save(UserConsent.grant(userId,
+				new ConsentGrant(ConsentPurpose.PRECISE_LOCATION, termsVersion, ConsentChannel.ANDROID), now));
+		return statusOf(Optional.of(granted), currentTermsVersion);
 	}
 
 	@Override
 	@Transactional
 	public void withdrawConsent(UUID userId) {
-		User user = users.getRequired(userId);
-		if (!user.locationConsent().isActive()) {
+		users.getRequired(userId);
+		Optional<UserConsent> active = currentConsent(userId).filter(UserConsent::isActive);
+		if (active.isEmpty()) {
 			return;
 		}
 		Instant now = clock.instant();
-		user.withdrawLocationConsent(now);
+		active.get().withdraw(now);
 		events.publishEvent(new LocationConsentWithdrawn(userId, now));
 	}
 
-	private static LocationConsentStatus statusOf(LocationConsent consent, String currentTermsVersion) {
-		return new LocationConsentStatus(consent.isActiveFor(currentTermsVersion), consent.termsVersion(),
-				consent.consentedAt(), consent.withdrawnAt(), currentTermsVersion);
+	private Optional<UserConsent> currentConsent(UUID userId) {
+		return consents.findCurrent(userId, ConsentPurpose.PRECISE_LOCATION);
+	}
+
+	private static LocationConsentStatus statusOf(Optional<UserConsent> consent, String currentTermsVersion) {
+		return new LocationConsentStatus(consent.filter(c -> c.isActiveFor(currentTermsVersion)).isPresent(),
+				consent.map(UserConsent::getPolicyVersion).orElse(null),
+				consent.map(UserConsent::getGrantedAt).orElse(null),
+				consent.map(UserConsent::getWithdrawnAt).orElse(null), currentTermsVersion);
 	}
 
 }

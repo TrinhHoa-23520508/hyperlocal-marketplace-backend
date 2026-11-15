@@ -3,6 +3,8 @@ package vn.edu.uit.nearby.nearby_backend.identity.domain.password;
 import java.util.List;
 import java.util.Optional;
 
+import org.jspecify.annotations.Nullable;
+
 import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
 
 public class PasswordPolicy {
@@ -17,8 +19,8 @@ public class PasswordPolicy {
 	 * @throws WeakPasswordException listing every violated rule, so the client can show
 	 * all reasons at once
 	 */
-	public void validate(String password, EmailAddress owner) {
-		PasswordCandidate candidate = new PasswordCandidate(password, owner);
+	public void validate(String password, @Nullable EmailAddress ownerEmail) {
+		PasswordCandidate candidate = new PasswordCandidate(password, ownerEmail);
 		List<PasswordViolation> violations = rules.stream()
 			.map(rule -> rule.check(candidate))
 			.flatMap(Optional::stream)

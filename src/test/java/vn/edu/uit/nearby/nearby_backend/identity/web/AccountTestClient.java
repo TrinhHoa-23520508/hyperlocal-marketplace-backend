@@ -4,6 +4,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.springframework.http.HttpHeaders;
@@ -17,6 +18,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import com.jayway.jsonpath.JsonPath;
 
 import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.PhoneNumber;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.constant.SecurityConstants;
@@ -31,6 +33,9 @@ final class AccountTestClient {
 	static final String PASSWORD = "Secret123";
 
 	private static final AtomicInteger IP_SUFFIX = new AtomicInteger();
+
+	private static final AtomicInteger PHONE_SUFFIX = new AtomicInteger(
+			ThreadLocalRandom.current().nextInt(10_000_000, 90_000_000));
 
 	private final MockMvc mvc;
 
@@ -51,14 +56,30 @@ final class AccountTestClient {
 		return "user-" + UUID.randomUUID() + "@example.com";
 	}
 
+	static String uniquePhone() {
+		return "+849" + PHONE_SUFFIX.incrementAndGet();
+	}
+
 	static String uniqueClientIp() {
 		int suffix = IP_SUFFIX.incrementAndGet();
 		return "10.%d.%d.%d".formatted((suffix >> 16) & 255, (suffix >> 8) & 255, suffix & 255);
 	}
 
+	User userWithPhone(String phone) {
+		return users
+			.save(User.register(PhoneNumber.of(phone), passwordEncoder.encode(PASSWORD), "Test User", Instant.now()));
+	}
+
+	/**
+	 * A phone-registered user who also verified {@code email}, so tests can log in with
+	 * the email address.
+	 */
 	User activeUser(String email) {
-		User user = User.register(EmailAddress.of(email), passwordEncoder.encode(PASSWORD), "Test User", Instant.now());
-		user.verifyEmail(Instant.now());
+		User user = User.register(PhoneNumber.of(uniquePhone()), passwordEncoder.encode(PASSWORD), "Test User",
+				Instant.now());
+		EmailAddress address = EmailAddress.of(email);
+		user.changeEmail(address, Instant.now());
+		user.verifyEmail(address, Instant.now());
 		return users.save(user);
 	}
 
@@ -80,13 +101,13 @@ final class AccountTestClient {
 		return mvc.perform(jsonRequest(post(path), json).header(HttpHeaders.AUTHORIZATION, bearer));
 	}
 
-	ResultActions login(String email, String password) throws Exception {
+	ResultActions login(String identifier, String password) throws Exception {
 		return postJson("/api/v1/auth/login", """
-				{"email":"%s","password":"%s"}""".formatted(email, password));
+				{"identifier":"%s","password":"%s"}""".formatted(identifier, password));
 	}
 
-	Session loginSession(String email) throws Exception {
-		MvcResult result = login(email, PASSWORD).andReturn();
+	Session loginSession(String identifier) throws Exception {
+		MvcResult result = login(identifier, PASSWORD).andReturn();
 		return new Session(read(result, "$.accessToken"), read(result, "$.refreshToken"));
 	}
 

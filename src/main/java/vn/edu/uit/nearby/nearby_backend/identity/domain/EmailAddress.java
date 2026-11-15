@@ -6,9 +6,9 @@ import java.util.regex.Pattern;
 import vn.edu.uit.nearby.nearby_backend.shared.constant.ErrorCodes;
 import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
 
-public record EmailAddress(String value) {
+public record EmailAddress(String value) implements AccountIdentifier {
 
-	private static final int MAX_LENGTH = 255;
+	private static final int MAX_LENGTH = 254;
 
 	private static final Pattern FORMAT = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 

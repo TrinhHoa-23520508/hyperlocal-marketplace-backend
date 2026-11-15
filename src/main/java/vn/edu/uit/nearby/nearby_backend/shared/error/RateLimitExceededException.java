@@ -20,7 +20,11 @@ public non-sealed class RateLimitExceededException extends BusinessException {
 	}
 
 	public RateLimitExceededException(@Nullable Duration retryAfter) {
-		super(ErrorCodes.RATE_LIMITED, "Too many requests, please try again later.");
+		this(ErrorCodes.RATE_LIMITED, "Too many requests, please try again later.", retryAfter);
+	}
+
+	public RateLimitExceededException(String code, String message, @Nullable Duration retryAfter) {
+		super(code, message);
 		this.retryAfter = retryAfter;
 	}
 

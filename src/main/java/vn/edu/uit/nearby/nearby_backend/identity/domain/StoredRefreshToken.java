@@ -7,6 +7,8 @@ import org.jspecify.annotations.Nullable;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -40,6 +42,10 @@ public class StoredRefreshToken {
 
 	@Column(name = "revoked_at")
 	private @Nullable Instant revokedAt;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "revoke_reason")
+	private @Nullable RevokeReason revokeReason;
 
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;

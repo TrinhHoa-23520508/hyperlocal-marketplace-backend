@@ -23,12 +23,14 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import tools.jackson.databind.json.JsonMapper;
 import vn.edu.uit.nearby.nearby_backend.identity.UserBanned;
 import vn.edu.uit.nearby.nearby_backend.identity.UserUnbanned;
+import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityParametersFixture;
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityProperties;
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityProperties.BootstrapAdmin;
 import vn.edu.uit.nearby.nearby_backend.identity.application.account.PasswordPolicyFixture;
 import vn.edu.uit.nearby.nearby_backend.identity.application.port.LockedAccountRegistry;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.AuditAction;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.AuditLogEntry;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.UserRole;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.password.WeakPasswordException;
@@ -89,7 +91,7 @@ class AdminSupportTests {
 		ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
 		verify(users).save(saved.capture());
 		assertThat(saved.getValue().getRole()).isEqualTo(UserRole.ADMIN);
-		assertThat(saved.getValue().getEmail()).isEqualTo("root@nearby.vn");
+		assertThat(saved.getValue().emailAddress()).contains(EmailAddress.of("root@nearby.vn"));
 		assertThat(saved.getValue().hasVerifiedEmail()).isTrue();
 	}
 
@@ -121,7 +123,7 @@ class AdminSupportTests {
 
 	private AdminAccountInitializer initializer(BootstrapAdmin admin) {
 		IdentityProperties properties = new IdentityProperties("nearby://verify-email", "nearby://reset-password",
-				new IdentityProperties.Mail(false, "no-reply@nearby.local"), admin);
+				IdentityParametersFixture.OTP, admin);
 		return new AdminAccountInitializer(users, PasswordPolicyFixture.standard(), passwordEncoder, properties, CLOCK);
 	}
 

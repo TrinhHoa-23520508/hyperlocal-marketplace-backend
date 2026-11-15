@@ -10,6 +10,8 @@ public final class SecurityConstants {
 
 	public static final String ROLES_CLAIM = "roles";
 
+	public static final String SESSION_CLAIM = "sid";
+
 	public static final String AUTHORITY_PREFIX = "ROLE_";
 
 	public static final int REFRESH_TOKEN_BYTES = 32;

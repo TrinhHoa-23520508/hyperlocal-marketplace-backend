@@ -9,10 +9,10 @@ final class AccountEmailTemplates {
 	private static final String VERIFICATION_BODY = """
 			Xin chào %s,
 
-			Cảm ơn bạn đã đăng ký Nearby. Mở liên kết dưới đây để kích hoạt tài khoản:
+			Bạn vừa thêm địa chỉ email này vào tài khoản Nearby. Mở liên kết dưới đây để xác minh email:
 			%s
 
-			Nếu bạn không đăng ký, hãy bỏ qua email này.
+			Nếu bạn không thực hiện thao tác này, hãy bỏ qua email này.
 			""";
 
 	private static final String PASSWORD_RESET_BODY = """

@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
+import vn.edu.uit.nearby.nearby_backend.identity.domain.RevokeReason;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.StoredRefreshToken;
 
 public interface RefreshTokenRepository extends JpaRepository<StoredRefreshToken, UUID> {
@@ -19,16 +20,28 @@ public interface RefreshTokenRepository extends JpaRepository<StoredRefreshToken
 	 * @return 1 when this call revoked the token, 0 when it was already revoked
 	 */
 	@Modifying
-	@Query("update StoredRefreshToken t set t.revokedAt = :now where t.id = :id and t.revokedAt is null")
-	int revokeIfActive(UUID id, Instant now);
+	@Query("""
+			update StoredRefreshToken t set t.revokedAt = :now, t.revokeReason = :reason
+			where t.id = :id and t.revokedAt is null""")
+	int revokeIfActive(UUID id, Instant now, RevokeReason reason);
 
 	@Modifying
-	@Query("update StoredRefreshToken t set t.revokedAt = :now where t.familyId = :familyId and t.revokedAt is null")
-	int revokeFamily(UUID familyId, Instant now);
+	@Query("""
+			update StoredRefreshToken t set t.revokedAt = :now, t.revokeReason = :reason
+			where t.familyId = :familyId and t.revokedAt is null""")
+	int revokeFamily(UUID familyId, Instant now, RevokeReason reason);
 
 	@Modifying
-	@Query("update StoredRefreshToken t set t.revokedAt = :now where t.userId = :userId and t.revokedAt is null")
-	int revokeAllOfUser(UUID userId, Instant now);
+	@Query("""
+			update StoredRefreshToken t set t.revokedAt = :now, t.revokeReason = :reason
+			where t.userId = :userId and t.revokedAt is null""")
+	int revokeAllOfUser(UUID userId, Instant now, RevokeReason reason);
+
+	@Modifying
+	@Query("""
+			update StoredRefreshToken t set t.revokedAt = :now, t.revokeReason = :reason
+			where t.userId = :userId and t.familyId <> :keptFamilyId and t.revokedAt is null""")
+	int revokeOtherFamilies(UUID userId, UUID keptFamilyId, Instant now, RevokeReason reason);
 
 	@Modifying
 	@Query("delete from StoredRefreshToken t where t.expiresAt < :cutoff")

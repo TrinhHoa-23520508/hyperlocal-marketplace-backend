@@ -3,7 +3,7 @@ package vn.edu.uit.nearby.nearby_backend.identity.application.consent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -17,6 +17,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.AdditionalAnswers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
@@ -25,6 +26,11 @@ import vn.edu.uit.nearby.nearby_backend.identity.LocationConsentWithdrawn;
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityParametersFixture;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.UserFixtures;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.consent.ConsentChannel;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.consent.ConsentGrant;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.consent.ConsentPurpose;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.consent.UserConsent;
+import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserConsentRepository;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.error.BusinessException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
@@ -39,6 +45,9 @@ class LocationConsentServiceImplTests {
 	UserRepository users;
 
 	@Mock
+	UserConsentRepository consents;
+
+	@Mock
 	ApplicationEventPublisher events;
 
 	private final User user = UserFixtures.activeUser();
@@ -47,13 +56,14 @@ class LocationConsentServiceImplTests {
 
 	@BeforeEach
 	void createService() {
-		consentService = new LocationConsentServiceImpl(users, IdentityParametersFixture.seeded(), events,
+		consentService = new LocationConsentServiceImpl(users, consents, IdentityParametersFixture.seeded(), events,
 				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	@Test
-	void consentToTheCurrentTermsIsRecordedWithItsTime() {
+	void consentToTheCurrentTermsAddsALedgerRow() {
 		when(users.getRequired(user.getId())).thenReturn(user);
+		when(consents.save(any(UserConsent.class))).then(AdditionalAnswers.returnsFirstArg());
 
 		LocationConsentStatus status = consentService.grantConsent(user.getId(), CURRENT_TERMS);
 
@@ -61,6 +71,17 @@ class LocationConsentServiceImplTests {
 		assertThat(status.consentedAt()).isEqualTo(NOW);
 		assertThat(status.termsVersion()).isEqualTo(CURRENT_TERMS);
 		assertThat(status.currentTermsVersion()).isEqualTo(CURRENT_TERMS);
+	}
+
+	@Test
+	void consentingAgainClosesThePreviousRow() {
+		UserConsent previous = givenCurrentConsent("0.9");
+		when(users.getRequired(user.getId())).thenReturn(user);
+		when(consents.save(any(UserConsent.class))).then(AdditionalAnswers.returnsFirstArg());
+
+		consentService.grantConsent(user.getId(), CURRENT_TERMS);
+
+		assertThat(previous.getWithdrawnAt()).isEqualTo(NOW);
 	}
 
 	@Test
@@ -74,6 +95,7 @@ class LocationConsentServiceImplTests {
 	@Test
 	void statusOfAUserWhoNeverConsentedIsNotGranted() {
 		when(users.getRequired(user.getId())).thenReturn(user);
+		when(consents.findCurrent(user.getId(), ConsentPurpose.PRECISE_LOCATION)).thenReturn(Optional.empty());
 
 		LocationConsentStatus status = consentService.getConsent(user.getId());
 
@@ -83,27 +105,22 @@ class LocationConsentServiceImplTests {
 
 	@Test
 	void facadeReportsConsentOnlyForTheCurrentTermsVersion() {
-		User consentedToOldTerms = UserFixtures.activeUser("old@example.com");
-		consentedToOldTerms.grantLocationConsent("0.9", NOW);
-		user.grantLocationConsent(CURRENT_TERMS, NOW);
-		when(users.findById(user.getId())).thenReturn(Optional.of(user));
-		when(users.findById(consentedToOldTerms.getId())).thenReturn(Optional.of(consentedToOldTerms));
+		givenCurrentConsent("0.9");
 
-		assertThat(consentService.hasConsented(user.getId())).isTrue();
-		assertThat(consentService.hasConsented(consentedToOldTerms.getId())).isFalse();
+		assertThat(consentService.hasConsented(user.getId())).isFalse();
 	}
 
 	@Test
 	void unknownUserHasNotConsented() {
 		UUID unknown = UUID.randomUUID();
-		when(users.findById(unknown)).thenReturn(Optional.empty());
+		when(consents.findCurrent(unknown, ConsentPurpose.PRECISE_LOCATION)).thenReturn(Optional.empty());
 
 		assertThat(consentService.hasConsented(unknown)).isFalse();
 	}
 
 	@Test
 	void requireConsentBlocksUsersWithoutConsent() {
-		when(users.findById(user.getId())).thenReturn(Optional.of(user));
+		when(consents.findCurrent(user.getId(), ConsentPurpose.PRECISE_LOCATION)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> consentService.requireConsent(user.getId()))
 			.isInstanceOf(OperationNotAllowedException.class)
@@ -113,32 +130,38 @@ class LocationConsentServiceImplTests {
 
 	@Test
 	void requireConsentLetsConsentedUsersThrough() {
-		user.grantLocationConsent(CURRENT_TERMS, NOW);
-		when(users.findById(user.getId())).thenReturn(Optional.of(user));
+		givenCurrentConsent(CURRENT_TERMS);
 
 		assertThatCode(() -> consentService.requireConsent(user.getId())).doesNotThrowAnyException();
 	}
 
 	@Test
 	void withdrawalStopsConsentAndNotifiesOtherModules() {
-		user.grantLocationConsent(CURRENT_TERMS, NOW.minusSeconds(60));
+		UserConsent current = givenCurrentConsent(CURRENT_TERMS);
 		when(users.getRequired(user.getId())).thenReturn(user);
 
 		consentService.withdrawConsent(user.getId());
 
-		assertThat(user.locationConsent().isActive()).isFalse();
+		assertThat(current.isActive()).isFalse();
 		verify(events).publishEvent(new LocationConsentWithdrawn(user.getId(), NOW));
 	}
 
 	@Test
 	void withdrawingWithoutAnActiveConsentDoesNothing() {
 		when(users.getRequired(user.getId())).thenReturn(user);
+		when(consents.findCurrent(user.getId(), ConsentPurpose.PRECISE_LOCATION)).thenReturn(Optional.empty());
 
 		consentService.withdrawConsent(user.getId());
 
-		assertThat(user.locationConsent().withdrawnAt()).isNull();
 		verifyNoInteractions(events);
-		verify(users, never()).save(user);
+	}
+
+	private UserConsent givenCurrentConsent(String version) {
+		UserConsent consent = UserConsent.grant(user.getId(),
+				new ConsentGrant(ConsentPurpose.PRECISE_LOCATION, version, ConsentChannel.ANDROID),
+				NOW.minusSeconds(60));
+		when(consents.findCurrent(user.getId(), ConsentPurpose.PRECISE_LOCATION)).thenReturn(Optional.of(consent));
+		return consent;
 	}
 
 }

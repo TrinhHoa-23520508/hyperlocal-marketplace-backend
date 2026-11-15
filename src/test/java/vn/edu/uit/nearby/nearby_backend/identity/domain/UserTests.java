@@ -18,56 +18,104 @@ class UserTests {
 
 	private static final Instant LATER = NOW.plus(Duration.ofHours(1));
 
+	private static final EmailAddress EMAIL = EmailAddress.of(UserFixtures.EMAIL);
+
+	private static final EmailAddress OTHER_EMAIL = EmailAddress.of("binh@example.com");
+
 	@Test
-	void registeredUserIsPendingWithRoleUserAndNormalizedEmail() {
-		User user = User.register(EmailAddress.of("  An@Example.COM "), "hash", "An", NOW);
+	void registeredUserIsActiveWithAVerifiedPhoneAndNoEmail() {
+		User user = User.register(PhoneNumber.of("0912 345 678"), "hash", "An", NOW);
 
 		assertThat(user.getId()).isNotNull();
-		assertThat(user.getEmail()).isEqualTo("an@example.com");
-		assertThat(user.getStatus()).isEqualTo(AccountStatus.PENDING);
+		assertThat(user.phoneNumber()).contains(PhoneNumber.of(UserFixtures.PHONE));
+		assertThat(user.getStatus()).isEqualTo(AccountStatus.ACTIVE);
 		assertThat(user.getRole()).isEqualTo(UserRole.USER);
+		assertThat(user.hasVerifiedPhone()).isTrue();
+		assertThat(user.getPhoneVerifiedAt()).isEqualTo(NOW);
+		assertThat(user.emailAddress()).isEmpty();
 		assertThat(user.hasVerifiedEmail()).isFalse();
-		assertThat(user.isAwaitingEmailVerification()).isTrue();
 		assertThat(user.isAdmin()).isFalse();
 	}
 
 	@Test
 	void creationTimeIsTruncatedToMillisecondsForCursorPagination() {
-		User user = User.register(EmailAddress.of(UserFixtures.EMAIL), "hash", "An",
+		User user = User.register(PhoneNumber.of(UserFixtures.PHONE), "hash", "An",
 				Instant.parse("2026-10-18T03:00:00.123456789Z"));
 
 		assertThat(user.getCreatedAt()).isEqualTo(Instant.parse("2026-10-18T03:00:00.123Z"));
 	}
 
 	@Test
-	void verifyingEmailActivatesTheAccountAndKeepsTheFirstVerificationTime() {
-		User user = UserFixtures.pendingUser();
-
-		user.verifyEmail(NOW);
-		user.verifyEmail(LATER);
-
-		assertThat(user.getStatus()).isEqualTo(AccountStatus.ACTIVE);
-		assertThat(user.getEmailVerifiedAt()).isEqualTo(NOW);
-		assertThat(user.getUpdatedAt()).isEqualTo(LATER);
-	}
-
-	@Test
-	void administratorIsActiveAndVerifiedFromTheStart() {
+	void administratorHasAVerifiedEmailAndNoPhone() {
 		User admin = UserFixtures.admin();
 
 		assertThat(admin.isAdmin()).isTrue();
 		assertThat(admin.getStatus()).isEqualTo(AccountStatus.ACTIVE);
 		assertThat(admin.hasVerifiedEmail()).isTrue();
+		assertThat(admin.phoneNumber()).isEmpty();
+		assertThat(admin.hasVerifiedPhone()).isFalse();
 	}
 
 	@Test
-	void pendingUserCannotLogIn() {
-		assertThatThrownBy(UserFixtures.pendingUser()::ensureCanLogIn).isInstanceOf(OperationNotAllowedException.class);
+	void newEmailIsStoredUnverified() {
+		User user = UserFixtures.activeUser();
+
+		user.changeEmail(EMAIL, LATER);
+
+		assertThat(user.emailAddress()).contains(EMAIL);
+		assertThat(user.hasVerifiedEmail()).isFalse();
+		assertThat(user.verifiedEmailAddress()).isEmpty();
+		assertThat(user.getUpdatedAt()).isEqualTo(LATER);
+	}
+
+	@Test
+	void verifyingTheAddressOnFileKeepsTheFirstVerificationTime() {
+		User user = UserFixtures.userWithUnverifiedEmail();
+
+		assertThat(user.verifyEmail(EMAIL, NOW)).isTrue();
+		assertThat(user.verifyEmail(EMAIL, LATER)).isTrue();
+
+		assertThat(user.getEmailVerifiedAt()).isEqualTo(NOW);
+		assertThat(user.verifiedEmailAddress()).contains(EMAIL);
+	}
+
+	@Test
+	void linkSentToAPreviousAddressDoesNotVerifyTheNewOne() {
+		User user = UserFixtures.userWithUnverifiedEmail();
+		user.changeEmail(OTHER_EMAIL, NOW);
+
+		assertThat(user.verifyEmail(EMAIL, LATER)).isFalse();
+
+		assertThat(user.hasVerifiedEmail()).isFalse();
+	}
+
+	@Test
+	void changingToAnotherAddressDropsTheVerification() {
+		User user = UserFixtures.userWithVerifiedEmail();
+
+		user.changeEmail(OTHER_EMAIL, LATER);
+
+		assertThat(user.hasVerifiedEmail()).isFalse();
+		assertThat(user.emailAddress()).contains(OTHER_EMAIL);
+	}
+
+	@Test
+	void savingTheSameVerifiedAddressKeepsItVerified() {
+		User user = UserFixtures.userWithVerifiedEmail();
+
+		user.changeEmail(EMAIL, LATER);
+
+		assertThat(user.hasVerifiedEmail()).isTrue();
 	}
 
 	@Test
 	void activeUserCanLogIn() {
 		assertThatCode(UserFixtures.activeUser()::ensureCanLogIn).doesNotThrowAnyException();
+	}
+
+	@Test
+	void lockedUserCannotLogIn() {
+		assertThatThrownBy(UserFixtures.lockedUser()::ensureCanLogIn).isInstanceOf(OperationNotAllowedException.class);
 	}
 
 	@Test
@@ -83,16 +131,6 @@ class UserTests {
 	}
 
 	@Test
-	void unlockingANeverVerifiedAccountReturnsToPending() {
-		User user = UserFixtures.pendingUser();
-		user.lock(NOW);
-
-		user.unlock(LATER);
-
-		assertThat(user.getStatus()).isEqualTo(AccountStatus.PENDING);
-	}
-
-	@Test
 	void lockingTwiceIsAConflict() {
 		User user = UserFixtures.lockedUser();
 
@@ -100,23 +138,13 @@ class UserTests {
 	}
 
 	@Test
-	void verifyingEmailOfALockedAccountKeepsItLocked() {
-		User user = UserFixtures.pendingUser();
-		user.lock(NOW);
-
-		user.verifyEmail(LATER);
-
-		assertThat(user.isLocked()).isTrue();
-		assertThat(user.hasVerifiedEmail()).isTrue();
-	}
-
-	@Test
-	void changePasswordReplacesTheHash() {
+	void changePasswordReplacesTheHashAndRecordsWhen() {
 		User user = UserFixtures.activeUser();
 
 		user.changePassword("new-hash", LATER);
 
 		assertThat(user.getPasswordHash()).isEqualTo("new-hash");
+		assertThat(user.getPasswordChangedAt()).isEqualTo(LATER);
 		assertThat(user.getUpdatedAt()).isEqualTo(LATER);
 	}
 
@@ -166,47 +194,6 @@ class UserTests {
 		assertThat(user.removeAvatar(LATER)).contains("avatars/a.jpg");
 		assertThat(user.getAvatarKey()).isNull();
 		assertThat(user.removeAvatar(LATER)).isEmpty();
-	}
-
-	@Test
-	void newUserHasNoLocationConsent() {
-		assertThat(UserFixtures.activeUser().locationConsent().isActive()).isFalse();
-	}
-
-	@Test
-	void grantingConsentRecordsTimeAndTermsVersion() {
-		User user = UserFixtures.activeUser();
-
-		user.grantLocationConsent("1.0", NOW);
-
-		LocationConsent consent = user.locationConsent();
-		assertThat(consent.consentedAt()).isEqualTo(NOW);
-		assertThat(consent.termsVersion()).isEqualTo("1.0");
-		assertThat(consent.isActiveFor("1.0")).isTrue();
-	}
-
-	@Test
-	void withdrawingConsentKeepsTheRecordButDeactivatesIt() {
-		User user = UserFixtures.activeUser();
-		user.grantLocationConsent("1.0", NOW);
-
-		user.withdrawLocationConsent(LATER);
-
-		assertThat(user.locationConsent().withdrawnAt()).isEqualTo(LATER);
-		assertThat(user.locationConsent().consentedAt()).isEqualTo(NOW);
-		assertThat(user.locationConsent().isActive()).isFalse();
-	}
-
-	@Test
-	void consentingAgainAfterWithdrawalReactivatesConsent() {
-		User user = UserFixtures.activeUser();
-		user.grantLocationConsent("1.0", NOW);
-		user.withdrawLocationConsent(NOW);
-
-		user.grantLocationConsent("1.0", LATER);
-
-		assertThat(user.locationConsent().isActive()).isTrue();
-		assertThat(user.locationConsent().withdrawnAt()).isNull();
 	}
 
 }

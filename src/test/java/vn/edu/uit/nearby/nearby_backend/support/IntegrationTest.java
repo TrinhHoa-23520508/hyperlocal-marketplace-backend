@@ -20,7 +20,7 @@ import vn.edu.uit.nearby.nearby_backend.TestcontainersConfiguration;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import({ TestcontainersConfiguration.class, ProbeController.class, RecordingAccountMailer.class,
-		InMemoryImageStorage.class })
+		RecordingSmsSender.class, InMemoryImageStorage.class })
 public @interface IntegrationTest {
 
 }

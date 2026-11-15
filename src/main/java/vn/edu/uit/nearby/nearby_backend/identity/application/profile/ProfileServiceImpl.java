@@ -11,8 +11,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityParameters;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.HomeArea;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.ImageUploadPolicy;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.PhoneNumber;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.constant.ErrorCodes;
@@ -123,8 +125,10 @@ public class ProfileServiceImpl implements ProfileService {
 	private UserProfile toProfile(User user) {
 		String avatarUrl = user.getAvatarKey() == null ? null : storage.presignDownload(user.getAvatarKey()).url();
 		GeoPoint homeArea = user.homeArea().map(HomeArea::center).orElse(null);
-		return new UserProfile(user.getId(), user.getEmail(), user.getDisplayName(), avatarUrl, user.getRole(),
-				user.getStatus(), homeArea, user.hasVerifiedEmail(), user.getCreatedAt());
+		return new UserProfile(user.getId(), user.phoneNumber().map(PhoneNumber::value).orElse(null),
+				user.emailAddress().map(EmailAddress::value).orElse(null), user.getDisplayName(), avatarUrl,
+				user.getRole(), user.getStatus(), homeArea, user.hasVerifiedPhone(), user.hasVerifiedEmail(),
+				user.getCreatedAt());
 	}
 
 	private static String avatarFolderOf(UUID userId) {

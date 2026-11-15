@@ -1,10 +1,13 @@
 package vn.edu.uit.nearby.nearby_backend.identity.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 
 import org.junit.jupiter.api.Test;
+
+import vn.edu.uit.nearby.nearby_backend.identity.domain.otp.OtpPolicy;
 
 class IdentityParametersTests {
 
@@ -30,8 +33,29 @@ class IdentityParametersTests {
 	}
 
 	@Test
-	void termsVersionIsReadAsText() {
+	void policyVersionsAreReadAsText() {
 		assertThat(parameters.locationTermsVersion()).isEqualTo("1.0");
+		assertThat(parameters.termsVersion()).isEqualTo("1.0");
+		assertThat(parameters.privacyVersion()).isEqualTo("1.0");
+	}
+
+	@Test
+	void otpPolicyFollowsTheSeededLimits() {
+		OtpPolicy policy = parameters.otpPolicy();
+
+		assertThat(policy.ttl()).isEqualTo(Duration.ofMinutes(5));
+		assertThat(policy.maxAttempts()).isEqualTo(5);
+		assertThat(policy.resendInterval()).isEqualTo(Duration.ofSeconds(60));
+		assertThat(policy.maxPerDay()).isEqualTo(5);
+	}
+
+	@Test
+	void otpSettingsRequireALongSecretAndACodePlaceholder() {
+		assertThatThrownBy(() -> new IdentityProperties.Otp("short", "{code}"))
+			.isInstanceOf(IllegalStateException.class);
+		assertThatThrownBy(() -> new IdentityProperties.Otp(IdentityParametersFixture.OTP.hashSecret(), "no code"))
+			.isInstanceOf(IllegalStateException.class);
+		assertThat(IdentityParametersFixture.OTP.smsContent("123456")).isEqualTo("123456 la ma Nearby");
 	}
 
 	@Test

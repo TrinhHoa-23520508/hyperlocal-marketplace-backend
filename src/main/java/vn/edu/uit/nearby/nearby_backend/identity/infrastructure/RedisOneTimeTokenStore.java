@@ -11,12 +11,15 @@ import org.springframework.stereotype.Component;
 
 import vn.edu.uit.nearby.nearby_backend.identity.application.port.OneTimeTokenPurpose;
 import vn.edu.uit.nearby.nearby_backend.identity.application.port.OneTimeTokenStore;
+import vn.edu.uit.nearby.nearby_backend.identity.application.port.OneTimeTokenSubject;
 import vn.edu.uit.nearby.nearby_backend.shared.constant.RedisKeyPrefixes;
 import vn.edu.uit.nearby.nearby_backend.shared.constant.SecurityConstants;
 import vn.edu.uit.nearby.nearby_backend.shared.security.TokenService;
 
 @Component
 public class RedisOneTimeTokenStore implements OneTimeTokenStore {
+
+	private static final String SEPARATOR = "|";
 
 	private final StringRedisTemplate redis;
 
@@ -27,26 +30,33 @@ public class RedisOneTimeTokenStore implements OneTimeTokenStore {
 	}
 
 	@Override
-	public String issue(OneTimeTokenPurpose purpose, UUID userId, Duration ttl) {
+	public String issue(OneTimeTokenPurpose purpose, OneTimeTokenSubject subject, Duration ttl) {
 		String token = randomToken();
-		redis.opsForValue().set(keyOf(purpose, token), userId.toString(), ttl);
+		redis.opsForValue().set(keyOf(purpose, token), subject.userId() + SEPARATOR + subject.boundTo(), ttl);
 		return token;
 	}
 
 	@Override
-	public Optional<UUID> find(OneTimeTokenPurpose purpose, String token) {
-		return Optional.ofNullable(redis.opsForValue().get(keyOf(purpose, token))).map(UUID::fromString);
+	public Optional<OneTimeTokenSubject> find(OneTimeTokenPurpose purpose, String token) {
+		return Optional.ofNullable(redis.opsForValue().get(keyOf(purpose, token))).map(RedisOneTimeTokenStore::parse);
 	}
 
 	@Override
-	public Optional<UUID> consume(OneTimeTokenPurpose purpose, String token) {
-		return Optional.ofNullable(redis.opsForValue().getAndDelete(keyOf(purpose, token))).map(UUID::fromString);
+	public Optional<OneTimeTokenSubject> consume(OneTimeTokenPurpose purpose, String token) {
+		return Optional.ofNullable(redis.opsForValue().getAndDelete(keyOf(purpose, token)))
+			.map(RedisOneTimeTokenStore::parse);
 	}
 
 	private String randomToken() {
 		byte[] bytes = new byte[SecurityConstants.REFRESH_TOKEN_BYTES];
 		secureRandom.nextBytes(bytes);
 		return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+	}
+
+	private static OneTimeTokenSubject parse(String stored) {
+		int separator = stored.indexOf(SEPARATOR);
+		return new OneTimeTokenSubject(UUID.fromString(stored.substring(0, separator)),
+				stored.substring(separator + 1));
 	}
 
 	private static String keyOf(OneTimeTokenPurpose purpose, String token) {

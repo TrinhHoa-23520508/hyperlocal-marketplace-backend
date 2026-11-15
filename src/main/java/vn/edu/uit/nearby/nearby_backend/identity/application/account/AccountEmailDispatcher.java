@@ -12,14 +12,16 @@ import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityProperties;
 import vn.edu.uit.nearby.nearby_backend.identity.application.port.AccountMailer;
 import vn.edu.uit.nearby.nearby_backend.identity.application.port.OneTimeTokenPurpose;
 import vn.edu.uit.nearby.nearby_backend.identity.application.port.OneTimeTokenStore;
+import vn.edu.uit.nearby.nearby_backend.identity.application.port.OneTimeTokenSubject;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.shared.constant.RedisKeyPrefixes;
 import vn.edu.uit.nearby.nearby_backend.shared.ratelimit.RateLimiter;
 
 /**
- * Issues a one-time token and emails its link. Over the hourly quota the email is skipped
- * silently: the endpoints that trigger it answer the same way whether or not the email
- * exists (FR-ID-08), so they must not start failing either.
+ * Issues a one-time token bound to the recipient address and emails its link. Over the
+ * hourly quota (5 per address, FR-ID-09) the email is skipped silently: the endpoints
+ * that trigger it answer the same way whether or not the address exists (FR-ID-07).
  */
 @Slf4j
 @Component
@@ -48,32 +50,36 @@ public class AccountEmailDispatcher {
 		this.properties = properties;
 	}
 
-	public void sendEmailVerification(User user) {
-		if (isOverQuota(user)) {
+	public void sendEmailVerification(User user, EmailAddress recipient) {
+		if (isOverQuota(user, recipient)) {
 			return;
 		}
-		String token = tokens.issue(OneTimeTokenPurpose.EMAIL_VERIFICATION, user.getId(),
+		String token = tokens.issue(OneTimeTokenPurpose.EMAIL_VERIFICATION, subjectOf(user, recipient),
 				parameters.emailVerificationTtl());
-		mailer.sendEmailVerification(user.emailAddress(), user.getDisplayName(),
+		mailer.sendEmailVerification(recipient, user.getDisplayName(),
 				linkWithToken(properties.emailVerificationUrl(), token));
 	}
 
-	public void sendPasswordReset(User user) {
-		if (isOverQuota(user)) {
+	public void sendPasswordReset(User user, EmailAddress recipient) {
+		if (isOverQuota(user, recipient)) {
 			return;
 		}
-		String token = tokens.issue(OneTimeTokenPurpose.PASSWORD_RESET, user.getId(), parameters.passwordResetTtl());
-		mailer.sendPasswordReset(user.emailAddress(), user.getDisplayName(),
-				linkWithToken(properties.passwordResetUrl(), token));
+		String token = tokens.issue(OneTimeTokenPurpose.PASSWORD_RESET, subjectOf(user, recipient),
+				parameters.passwordResetTtl());
+		mailer.sendPasswordReset(recipient, user.getDisplayName(), linkWithToken(properties.passwordResetUrl(), token));
 	}
 
-	private boolean isOverQuota(User user) {
-		boolean isWithinQuota = rateLimiter.tryAcquire(RedisKeyPrefixes.ACCOUNT_EMAILS + user.getEmail(),
+	private boolean isOverQuota(User user, EmailAddress recipient) {
+		boolean isWithinQuota = rateLimiter.tryAcquire(RedisKeyPrefixes.ACCOUNT_EMAILS + recipient.value(),
 				parameters.accountEmailsPerHour(), QUOTA_WINDOW);
 		if (!isWithinQuota) {
 			log.info("Account email to user {} skipped: hourly quota reached", user.getId());
 		}
 		return !isWithinQuota;
+	}
+
+	private static OneTimeTokenSubject subjectOf(User user, EmailAddress recipient) {
+		return new OneTimeTokenSubject(user.getId(), recipient.value());
 	}
 
 	private static String linkWithToken(String baseUrl, String token) {

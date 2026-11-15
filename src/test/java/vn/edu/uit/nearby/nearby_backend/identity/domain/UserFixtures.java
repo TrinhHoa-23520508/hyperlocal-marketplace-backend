@@ -6,6 +6,8 @@ public final class UserFixtures {
 
 	public static final Instant NOW = Instant.parse("2026-10-18T03:00:00Z");
 
+	public static final String PHONE = "+84912345678";
+
 	public static final String EMAIL = "an.nguyen@example.com";
 
 	public static final String PASSWORD_HASH = "{noop}Secret123";
@@ -15,21 +17,25 @@ public final class UserFixtures {
 	private UserFixtures() {
 	}
 
-	public static User pendingUser() {
-		return pendingUser(EMAIL);
-	}
-
-	public static User pendingUser(String email) {
-		return User.register(EmailAddress.of(email), PASSWORD_HASH, DISPLAY_NAME, NOW);
-	}
-
 	public static User activeUser() {
-		return activeUser(EMAIL);
+		return activeUser(PHONE);
 	}
 
-	public static User activeUser(String email) {
-		User user = pendingUser(email);
-		user.verifyEmail(NOW);
+	public static User activeUser(String phone) {
+		return User.register(PhoneNumber.of(phone), PASSWORD_HASH, DISPLAY_NAME, NOW);
+	}
+
+	public static User userWithVerifiedEmail() {
+		User user = activeUser();
+		EmailAddress email = EmailAddress.of(EMAIL);
+		user.changeEmail(email, NOW);
+		user.verifyEmail(email, NOW);
+		return user;
+	}
+
+	public static User userWithUnverifiedEmail() {
+		User user = activeUser();
+		user.changeEmail(EmailAddress.of(EMAIL), NOW);
 		return user;
 	}
 
