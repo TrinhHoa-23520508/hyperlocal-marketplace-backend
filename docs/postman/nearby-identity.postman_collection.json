@@ -1,16 +1,16 @@
 {
   "info": {
     "name": "Nearby - Identity API",
-    "description": "Accounts and authorization (SRS 3.1, FR-ID-01..08). Run the folders in order. Errors are RFC 9457 problem details with a stable code field. Contract: docs/api/identity-api.md.",
+    "description": "Accounts and authorization (SRS 3.1). Run the folders in order. Errors are RFC 9457 problem details with a stable code field. Contract: docs/api/identity-api.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
       "name": "1. Authentication",
-      "description": "Public endpoints under /api/v1/auth (FR-ID-01, FR-ID-02, FR-ID-07, FR-ID-08). With MAIL_ENABLED=false the verification and reset links are written to the backend log; copy the token query parameter into the collection variables verificationToken / resetToken.",
+      "description": "Public endpoints under /api/v1/auth plus password and email under /api/v1/users/me (FR-ID-01..05, 07..09). Set the phone variable to your own number when SMS_PROVIDER=esms.",
       "item": [
         {
-          "name": "Register",
+          "name": "Send registration code (SMS)",
           "request": {
             "method": "POST",
             "header": [
@@ -20,7 +20,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "raw": "{{baseUrl}}/api/v1/auth/register/otp",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -28,13 +28,14 @@
                 "api",
                 "v1",
                 "auth",
-                "register"
+                "register",
+                "otp"
               ]
             },
-            "description": "Creates a PENDING account and sends a verification email. 409 REGISTRATION_REJECTED when the email is taken (generic message), 400 WEAK_PASSWORD with a violations list, 429 per client IP.",
+            "description": "Sends a 6-digit code by SMS (FR-ID-02). With SMS_PROVIDER=log the code is in the backend log (search \"[sms disabled]\"); copy it into the otp collection variable. 429 OTP_RATE_LIMITED within 60 s or after 5 codes per day, 503 SMS_UNAVAILABLE when the gateway fails, 400 INVALID_PHONE.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"displayName\": \"An Nguyen\"\n}",
+              "raw": "{\n  \"phone\": \"{{phone}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -51,9 +52,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
-                  "pm.test(\"Account is pending\", () => pm.expect(pm.response.json().status).to.eql(\"PENDING\"));",
-                  "pm.collectionVariables.set(\"userId\", pm.response.json().userId);"
+                  "pm.test(\"Status is 202\", () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set(\"challengeId\", pm.response.json().challengeId);"
                 ]
               }
             }
@@ -81,10 +81,10 @@
                 "register"
               ]
             },
-            "description": "Shows every violated password rule at once.",
+            "description": "The password policy is checked before the code; the answer lists every violated rule.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"weak-{{$timestamp}}@example.com\",\n  \"password\": \"short\",\n  \"displayName\": \"Weak\"\n}",
+              "raw": "{\n  \"phone\": \"{{phone}}\",\n  \"challengeId\": \"{{challengeId}}\",\n  \"otp\": \"000000\",\n  \"password\": \"short\",\n  \"displayName\": \"Weak\",\n  \"termsVersion\": \"{{policyVersion}}\",\n  \"privacyVersion\": \"{{policyVersion}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -102,15 +102,14 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
-                  "pm.test(\"Problem code is WEAK_PASSWORD\", () => pm.expect(pm.response.json().code).to.eql(\"WEAK_PASSWORD\"));",
-                  "pm.test(\"Lists the violations\", () => pm.expect(pm.response.json().violations).to.not.be.empty);"
+                  "pm.test(\"Code is WEAK_PASSWORD\", () => pm.expect(pm.response.json().code).to.eql(\"WEAK_PASSWORD\"));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Verify email",
+          "name": "Register",
           "request": {
             "method": "POST",
             "header": [
@@ -120,7 +119,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/email-verification",
+              "raw": "{{baseUrl}}/api/v1/auth/register",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -128,13 +127,13 @@
                 "api",
                 "v1",
                 "auth",
-                "email-verification"
+                "register"
               ]
             },
-            "description": "Activates the account with the token from the verification link. 400 INVALID_VERIFICATION_TOKEN for an unknown, used or expired token.",
+            "description": "Creates an ACTIVE account with a verified phone, records TERMS/PRIVACY consent and returns a token pair (FR-ID-01). 422 OTP_INVALID / OTP_EXPIRED / CONSENT_REQUIRED, 409 PHONE_ALREADY_REGISTERED / POLICY_VERSION_STALE, 400 WEAK_PASSWORD, 429 per client IP.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"token\": \"{{verificationToken}}\"\n}",
+              "raw": "{\n  \"phone\": \"{{phone}}\",\n  \"challengeId\": \"{{challengeId}}\",\n  \"otp\": \"{{otp}}\",\n  \"password\": \"{{password}}\",\n  \"displayName\": \"An Nguyen\",\n  \"termsVersion\": \"{{policyVersion}}\",\n  \"privacyVersion\": \"{{policyVersion}}\",\n  \"pushMarketing\": false\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -151,112 +150,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 204\", () => pm.response.to.have.status(204));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Resend verification email",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/email-verification/resend",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "auth",
-                "email-verification",
-                "resend"
-              ]
-            },
-            "description": "Always 202, whether or not the email exists.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "noauth"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 202\", () => pm.response.to.have.status(202));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Login",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/login",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "auth",
-                "login"
-              ]
-            },
-            "description": "Issues a 15-minute access token and a 30-day rotating refresh token. 401 INVALID_CREDENTIALS, 403 EMAIL_NOT_VERIFIED / ACCOUNT_LOCKED, 429 after 5 failures in 15 minutes.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "noauth"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
                   "const body = pm.response.json();",
-                  "pm.collectionVariables.set(\"accessToken\", body.accessToken);",
-                  "pm.collectionVariables.set(\"refreshToken\", body.refreshToken);",
-                  "pm.test(\"Returns a Bearer token pair\", () => {",
-                  "  pm.expect(body.tokenType).to.eql(\"Bearer\");",
-                  "  pm.expect(body.accessToken).to.be.a(\"string\");",
-                  "  pm.expect(body.refreshToken).to.be.a(\"string\");",
-                  "});"
+                  "pm.collectionVariables.set(\"userId\", body.userId);",
+                  "pm.collectionVariables.set(\"accessToken\", body.tokens.accessToken);",
+                  "pm.collectionVariables.set(\"refreshToken\", body.tokens.refreshToken);"
                 ]
               }
             }
@@ -284,10 +182,10 @@
                 "login"
               ]
             },
-            "description": "Same response for a wrong password and an unknown email.",
+            "description": "Same answer as an unknown number.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"Wrong1234\"\n}",
+              "raw": "{\n  \"identifier\": \"{{phone}}\",\n  \"password\": \"Wrong1234\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -305,7 +203,58 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
-                  "pm.test(\"Problem code is INVALID_CREDENTIALS\", () => pm.expect(pm.response.json().code).to.eql(\"INVALID_CREDENTIALS\"));"
+                  "pm.test(\"Code is INVALID_CREDENTIALS\", () => pm.expect(pm.response.json().code).to.eql(\"INVALID_CREDENTIALS\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Logs in with the phone number or a verified email (FR-ID-03). 401 INVALID_CREDENTIALS, 403 ACCOUNT_LOCKED, 429 LOGIN_LOCKED after 5 failures in 15 minutes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{phone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"accessToken\", body.accessToken);",
+                  "pm.collectionVariables.set(\"refreshToken\", body.refreshToken);"
                 ]
               }
             }
@@ -426,6 +375,364 @@
           ]
         },
         {
+          "name": "Change password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/me/password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "me",
+                "password"
+              ]
+            },
+            "description": "FR-ID-08: other devices are logged out, this session stays. 400 CURRENT_PASSWORD_INVALID / PASSWORD_REUSED.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{password}}\",\n  \"newPassword\": \"{{newPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 204\", () => pm.response.to.have.status(204));",
+                  "pm.collectionVariables.set(\"password\", pm.collectionVariables.get(\"newPassword\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add email",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/me/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "me",
+                "email"
+              ]
+            },
+            "description": "FR-ID-09: stores the address unverified and emails a link valid 24 h. With MAIL_ENABLED=false the link is in the backend log; copy its token into verificationToken. 409 EMAIL_UNAVAILABLE.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 202\", () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resend email verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/me/email/verification",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "me",
+                "email",
+                "verification"
+              ]
+            },
+            "description": "Sends a new link to the unverified address (5 per address per hour).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 202\", () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/email-verification",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "email-verification"
+              ]
+            },
+            "description": "Single-use token from the email link. 422 INVALID_VERIFICATION_TOKEN.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{verificationToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Forgot password (SMS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/password/forgot",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "password",
+                "forgot"
+              ]
+            },
+            "description": "FR-ID-07: same answer whether or not the number has an account; the SMS is sent only when it has one. Send an email address as identifier to get a reset link instead (channel EMAIL).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{phone}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 202\", () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set(\"challengeId\", pm.response.json().challengeId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify reset code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/password/verify-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "password",
+                "verify-otp"
+              ]
+            },
+            "description": "Exchanges the SMS code for a single-use reset token. Put the new code into otp first.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{challengeId}}\",\n  \"phone\": \"{{phone}}\",\n  \"otp\": \"{{otp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"resetToken\", pm.response.json().resetToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reset password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/password/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "password",
+                "reset"
+              ]
+            },
+            "description": "Sets the new password and logs out every session. 422 RESET_TOKEN_INVALID.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resetToken\": \"{{resetToken}}\",\n  \"newPassword\": \"{{newPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Logout",
           "request": {
             "method": "POST",
@@ -468,105 +775,6 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status is 204\", () => pm.response.to.have.status(204));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Forgot password",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/password/forgot",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "auth",
-                "password",
-                "forgot"
-              ]
-            },
-            "description": "Always 202, whether or not the email exists.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "noauth"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 202\", () => pm.response.to.have.status(202));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Reset password",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/password/reset",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "auth",
-                "password",
-                "reset"
-              ]
-            },
-            "description": "Sets the new password and logs out every session. 400 INVALID_PASSWORD_RESET_TOKEN or WEAK_PASSWORD.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"{{newPassword}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "noauth"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 204\", () => pm.response.to.have.status(204));",
-                  "pm.collectionVariables.set(\"password\", pm.collectionVariables.get(\"newPassword\"));"
                 ]
               }
             }
@@ -1071,7 +1279,7 @@
             "description": "Logs in as the bootstrap admin.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "raw": "{\n  \"identifier\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1356,12 +1564,28 @@
   ],
   "variable": [
     {
-      "key": "baseUrl",
-      "value": "http://localhost:8080"
+      "key": "phone",
+      "value": "0912345678"
+    },
+    {
+      "key": "otp",
+      "value": ""
+    },
+    {
+      "key": "challengeId",
+      "value": ""
+    },
+    {
+      "key": "policyVersion",
+      "value": "1.0"
     },
     {
       "key": "email",
       "value": "an.nguyen@example.com"
+    },
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
     },
     {
       "key": "password",

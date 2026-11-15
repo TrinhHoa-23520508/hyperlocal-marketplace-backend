@@ -2,23 +2,23 @@ package vn.edu.uit.nearby.nearby_backend.identity.application.port;
 
 import java.time.Duration;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
- * Single-use tokens sent by email. Only a hash of the token is stored.
+ * Single-use tokens for email links and password resets. Only a hash of the token is
+ * stored.
  */
 public interface OneTimeTokenStore {
 
 	/**
-	 * @return the raw token to put in the email link
+	 * @return the raw token to give to the user
 	 */
-	String issue(OneTimeTokenPurpose purpose, UUID userId, Duration ttl);
+	String issue(OneTimeTokenPurpose purpose, OneTimeTokenSubject subject, Duration ttl);
 
-	Optional<UUID> find(OneTimeTokenPurpose purpose, String token);
+	Optional<OneTimeTokenSubject> find(OneTimeTokenPurpose purpose, String token);
 
 	/**
 	 * Atomically reads and deletes the token, so it can be used only once.
 	 */
-	Optional<UUID> consume(OneTimeTokenPurpose purpose, String token);
+	Optional<OneTimeTokenSubject> consume(OneTimeTokenPurpose purpose, String token);
 
 }

@@ -29,6 +29,7 @@ import vn.edu.uit.nearby.nearby_backend.identity.UserUnbanned;
 import vn.edu.uit.nearby.nearby_backend.identity.application.auth.UserSessions;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.AccountStatus;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.AuditAction;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.RevokeReason;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.UserFixtures;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
@@ -71,7 +72,7 @@ class UserAdministrationServiceImplTests {
 		AdminUserView view = administration.lockUser(ADMIN_ID, user.getId(), REASON);
 
 		assertThat(view.status()).isEqualTo(AccountStatus.BANNED);
-		verify(sessions).endAll(user.getId());
+		verify(sessions).endAll(user.getId(), RevokeReason.SANCTION);
 		verify(auditLog).recordUserAction(ADMIN_ID, AuditAction.USER_LOCKED, user.getId(), Map.of("reason", REASON));
 		verify(events).publishEvent(new UserBanned(user.getId(), NOW));
 	}
@@ -129,25 +130,27 @@ class UserAdministrationServiceImplTests {
 
 	@Test
 	void singleUserIsReturnedAsAnAdminView() {
-		User user = givenUser(UserFixtures.pendingUser());
+		User user = givenUser(UserFixtures.userWithUnverifiedEmail());
 
 		AdminUserView view = administration.getUser(user.getId());
 
 		assertThat(view.id()).isEqualTo(user.getId());
+		assertThat(view.phone()).isEqualTo(UserFixtures.PHONE);
+		assertThat(view.phoneVerified()).isTrue();
 		assertThat(view.email()).isEqualTo(UserFixtures.EMAIL);
 		assertThat(view.emailVerified()).isFalse();
 	}
 
 	@Test
 	void searchReturnsOnePageAndACursorWhenMoreRowsExist() {
-		List<User> fetched = List.of(UserFixtures.activeUser("a@example.com"), UserFixtures.activeUser("b@example.com"),
-				UserFixtures.activeUser("c@example.com"));
+		List<User> fetched = List.of(UserFixtures.activeUser("0911111111"), UserFixtures.activeUser("0922222222"),
+				UserFixtures.activeUser("0933333333"));
 		givenSearchReturns(fetched);
 
 		CursorPage<AdminUserView> page = administration
 			.searchUsers(new UserSearchCriteria("example", AccountStatus.ACTIVE, null, 2));
 
-		assertThat(page.items()).extracting(AdminUserView::email).containsExactly("a@example.com", "b@example.com");
+		assertThat(page.items()).extracting(AdminUserView::phone).containsExactly("+84911111111", "+84922222222");
 		assertThat(page.hasMore()).isTrue();
 		assertThat(CursorPage.Cursor.decode(page.nextCursor()))
 			.contains(new CursorPage.Cursor(fetched.get(1).getCreatedAt(), fetched.get(1).getId()));

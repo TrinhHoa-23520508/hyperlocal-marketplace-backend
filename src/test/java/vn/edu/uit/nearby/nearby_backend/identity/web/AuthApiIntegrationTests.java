@@ -5,14 +5,19 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasItems;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Map;
+import java.util.UUID;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -26,23 +31,40 @@ import vn.edu.uit.nearby.nearby_backend.identity.web.AccountTestClient.Session;
 import vn.edu.uit.nearby.nearby_backend.shared.security.TokenService;
 import vn.edu.uit.nearby.nearby_backend.support.IntegrationTest;
 import vn.edu.uit.nearby.nearby_backend.support.RecordingAccountMailer;
+import vn.edu.uit.nearby.nearby_backend.support.RecordingSmsSender;
 
 @IntegrationTest
 class AuthApiIntegrationTests {
 
-	private static final String REGISTER = "/api/v1/auth/register";
+	private static final String SEND_CODE = "/api/v1/auth/register/otp";
 
-	private static final String VERIFY = "/api/v1/auth/email-verification";
+	private static final String REGISTER = "/api/v1/auth/register";
 
 	private static final String REFRESH = "/api/v1/auth/refresh";
 
 	private static final String LOGOUT = "/api/v1/auth/logout";
 
+	private static final String FORGOT = "/api/v1/auth/password/forgot";
+
+	private static final String VERIFY_RESET_CODE = "/api/v1/auth/password/verify-otp";
+
+	private static final String RESET = "/api/v1/auth/password/reset";
+
+	private static final String VERIFY_EMAIL = "/api/v1/auth/email-verification";
+
+	private static final String NEW_PASSWORD = "NewSecret456";
+
 	@Autowired
 	MockMvc mvc;
 
 	@Autowired
+	RecordingSmsSender sms;
+
+	@Autowired
 	RecordingAccountMailer mailer;
+
+	@Autowired
+	StringRedisTemplate redis;
 
 	@Autowired
 	UserRepository users;
@@ -55,7 +77,7 @@ class AuthApiIntegrationTests {
 
 	private AccountTestClient client;
 
-	private final String email = AccountTestClient.uniqueEmail();
+	private final String phone = AccountTestClient.uniquePhone();
 
 	@BeforeEach
 	void createClient() {
@@ -63,58 +85,104 @@ class AuthApiIntegrationTests {
 	}
 
 	@Test
-	void newAccountMustVerifyItsEmailBeforeLoggingIn() throws Exception {
-		register(email, "Secret123").andExpect(status().isCreated())
-			.andExpect(jsonPath("$.email").value(email))
-			.andExpect(jsonPath("$.status").value("PENDING"));
-		client.login(email, "Secret123")
-			.andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.code").value("EMAIL_NOT_VERIFIED"));
+	void phoneVerifiedByCodeOpensAnActiveAccountWithASession() throws Exception {
+		String challengeId = sendRegistrationCode(phone);
 
-		client.postJson(VERIFY, tokenJson(verificationToken())).andExpect(status().isNoContent());
+		MvcResult registered = register(challengeId, sms.lastCodeSentTo(phone).orElseThrow(), "Secret123")
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.phone").value(phone))
+			.andExpect(jsonPath("$.tokens.tokenType").value("Bearer"))
+			.andExpect(jsonPath("$.tokens.refreshToken").isNotEmpty())
+			.andReturn();
 
-		client.login(email, "Secret123")
+		mvc.perform(get("/api/v1/users/me").header(HttpHeaders.AUTHORIZATION,
+				"Bearer " + AccountTestClient.read(registered, "$.tokens.accessToken")))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.tokenType").value("Bearer"))
-			.andExpect(jsonPath("$.accessToken").isNotEmpty())
-			.andExpect(jsonPath("$.refreshToken").isNotEmpty());
+			.andExpect(jsonPath("$.phone").value(phone))
+			.andExpect(jsonPath("$.phoneVerified").value(true))
+			.andExpect(jsonPath("$.status").value("ACTIVE"));
+		client.login(localFormOf(phone), "Secret123").andExpect(status().isOk());
 	}
 
 	@Test
-	void verificationTokenWorksOnlyOnce() throws Exception {
-		register(email, "Secret123");
-		String token = verificationToken();
-		client.postJson(VERIFY, tokenJson(token)).andExpect(status().isNoContent());
-
-		client.postJson(VERIFY, tokenJson(token))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value("INVALID_VERIFICATION_TOKEN"));
+	void sendingACodeAnswersWithTheChallengeAndItsTimings() throws Exception {
+		client.postJson(SEND_CODE, phoneJson(phone))
+			.andExpect(status().isAccepted())
+			.andExpect(jsonPath("$.challengeId").isNotEmpty())
+			.andExpect(jsonPath("$.expiresInSeconds").value(300))
+			.andExpect(jsonPath("$.resendAfterSeconds").value(60));
 	}
 
 	@Test
-	void resendIssuesANewWorkingVerificationToken() throws Exception {
-		register(email, "Secret123");
-		String first = verificationToken();
+	void redisNeverHoldsTheCodeInPlainText() throws Exception {
+		String challengeId = sendRegistrationCode(phone);
+		String code = sms.lastCodeSentTo(phone).orElseThrow();
 
-		client.postJson("/api/v1/auth/email-verification/resend", emailJson(email)).andExpect(status().isAccepted());
+		Map<Object, Object> stored = redis.opsForHash().entries("otp:" + challengeId);
 
-		String second = verificationToken();
-		assertThat(second).isNotEqualTo(first);
-		client.postJson(VERIFY, tokenJson(second)).andExpect(status().isNoContent());
+		assertThat(stored).isNotEmpty();
+		assertThat(stored.values()).allSatisfy(value -> assertThat(value.toString()).doesNotContain(code));
 	}
 
 	@Test
-	void takenEmailGetsAGenericErrorThatDoesNotRevealTheAccount() throws Exception {
-		client.activeUser(email);
+	void askingForAnotherCodeWithinAMinuteIsRateLimited() throws Exception {
+		sendRegistrationCode(phone);
 
-		register(email.toUpperCase(), "Secret123").andExpect(status().isConflict())
-			.andExpect(jsonPath("$.code").value("REGISTRATION_REJECTED"))
-			.andExpect(jsonPath("$.detail").value("Registration could not be completed with the provided details."));
+		client.postJson(SEND_CODE, phoneJson(phone))
+			.andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.code").value("OTP_RATE_LIMITED"))
+			.andExpect(header().exists(HttpHeaders.RETRY_AFTER));
+	}
+
+	@Test
+	void wrongCodeTellsHowManyAttemptsAreLeft() throws Exception {
+		String challengeId = sendRegistrationCode(phone);
+		String wrongCode = sms.lastCodeSentTo(phone).orElseThrow().equals("000000") ? "111111" : "000000";
+
+		register(challengeId, wrongCode, "Secret123").andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.code").value("OTP_INVALID"))
+			.andExpect(jsonPath("$.remainingAttempts").value(4));
+	}
+
+	@Test
+	void codeWorksOnlyOnce() throws Exception {
+		String challengeId = sendRegistrationCode(phone);
+		String code = sms.lastCodeSentTo(phone).orElseThrow();
+		register(challengeId, code, "Secret123").andExpect(status().isCreated());
+
+		register(challengeId, code, "Secret123").andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.code").value("OTP_EXPIRED"));
+	}
+
+	@Test
+	void registeredNumberIsReportedOnlyAfterTheCodeIsVerified() throws Exception {
+		client.userWithPhone(phone);
+		String challengeId = sendRegistrationCode(phone);
+
+		register(challengeId, sms.lastCodeSentTo(phone).orElseThrow(), "Secret123").andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("PHONE_ALREADY_REGISTERED"));
+	}
+
+	@Test
+	void registrationWithoutAcceptingThePoliciesIsRejected() throws Exception {
+		client.postJson(REGISTER, """
+				{"phone":"%s","challengeId":"%s","otp":"123456","password":"Secret123","displayName":"An Nguyen",
+				 "termsVersion":"1.0"}""".formatted(phone, UUID.randomUUID()))
+			.andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.code").value("CONSENT_REQUIRED"));
+	}
+
+	@Test
+	void outdatedPolicyVersionIsRejected() throws Exception {
+		client.postJson(REGISTER, registrationJson(phone, UUID.randomUUID().toString(), "123456", "Secret123", "0.9"))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("POLICY_VERSION_STALE"));
 	}
 
 	@Test
 	void weakPasswordIsRejectedWithEveryReason() throws Exception {
-		register(email, "short").andExpect(status().isBadRequest())
+		client.postJson(REGISTER, registrationJson(phone, UUID.randomUUID().toString(), "123456", "short", "1.0"))
+			.andExpect(status().isBadRequest())
 			.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
 			.andExpect(jsonPath("$.code").value("WEAK_PASSWORD"))
 			.andExpect(jsonPath("$.violations[*].rule").value(containsInAnyOrder("MIN_LENGTH", "LETTER_AND_DIGIT")));
@@ -123,79 +191,76 @@ class AuthApiIntegrationTests {
 	@Test
 	void malformedRegistrationIsAValidationError() throws Exception {
 		client.postJson(REGISTER, """
-				{"email":"not-an-email","password":"Secret123","displayName":""}""")
+				{"phone":"","otp":"12","password":"Secret123","displayName":""}""")
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
-			.andExpect(jsonPath("$.errors[*].field").value(hasItems("email", "displayName")));
+			.andExpect(jsonPath("$.errors[*].field").value(hasItems("phone", "challengeId", "otp", "displayName")));
+	}
+
+	@Test
+	void numberThatIsNotAVietnameseMobileIsRejected() throws Exception {
+		client.postJson(SEND_CODE, phoneJson("+14155550100"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("INVALID_PHONE"));
 	}
 
 	@Test
 	void tooManyRegistrationsFromOneIpAreRateLimited() throws Exception {
 		String sameIp = AccountTestClient.uniqueClientIp();
 		for (int i = 0; i < 10; i++) {
-			mvc.perform(registration(AccountTestClient.uniqueEmail(), sameIp)).andExpect(status().isCreated());
+			mvc.perform(registration(sameIp)).andExpect(status().isUnprocessableContent());
 		}
 
-		mvc.perform(registration(AccountTestClient.uniqueEmail(), sameIp))
+		mvc.perform(registration(sameIp))
 			.andExpect(status().isTooManyRequests())
 			.andExpect(header().exists(HttpHeaders.RETRY_AFTER));
 	}
 
 	@Test
-	void wrongPasswordAndUnknownEmailLookTheSame() throws Exception {
-		client.activeUser(email);
+	void wrongPasswordAndUnknownNumberGetIdenticalAnswers() throws Exception {
+		client.userWithPhone(phone);
 
-		MvcResult wrongPassword = client.login(email, "Wrong1234").andExpect(status().isUnauthorized()).andReturn();
-		MvcResult unknownEmail = client.login(AccountTestClient.uniqueEmail(), "Wrong1234")
+		MvcResult wrongPassword = client.login(phone, "Wrong1234").andExpect(status().isUnauthorized()).andReturn();
+		MvcResult unknownPhone = client.login(AccountTestClient.uniquePhone(), "Wrong1234")
 			.andExpect(status().isUnauthorized())
 			.andReturn();
 
-		assertThat(AccountTestClient.read(unknownEmail, "$.code")).isEqualTo("INVALID_CREDENTIALS");
-		assertThat(AccountTestClient.read(unknownEmail, "$.detail"))
-			.isEqualTo(AccountTestClient.read(wrongPassword, "$.detail"));
+		assertThat(AccountTestClient.read(unknownPhone, "$.code")).isEqualTo("INVALID_CREDENTIALS");
+		assertThat(unknownPhone.getResponse().getContentAsString())
+			.isEqualTo(wrongPassword.getResponse().getContentAsString());
 	}
 
 	@Test
-	void fiveFailedLoginsBlockLoginForTheEmailEvenWithTheRightPassword() throws Exception {
-		client.activeUser(email);
+	void fiveFailedLoginsLockTheAccountEvenForTheRightPassword() throws Exception {
+		client.userWithPhone(phone);
 		for (int i = 0; i < 5; i++) {
-			client.login(email, "Wrong1234").andExpect(status().isUnauthorized());
+			client.login(phone, "Wrong1234").andExpect(status().isUnauthorized());
 		}
 
-		client.login(email, AccountTestClient.PASSWORD)
+		client.login(phone, AccountTestClient.PASSWORD)
 			.andExpect(status().isTooManyRequests())
-			.andExpect(jsonPath("$.code").value("RATE_LIMITED"))
+			.andExpect(jsonPath("$.code").value("LOGIN_LOCKED"))
 			.andExpect(header().exists(HttpHeaders.RETRY_AFTER));
 	}
 
 	@Test
 	void successfulLoginResetsTheFailureCount() throws Exception {
-		client.activeUser(email);
+		client.userWithPhone(phone);
 		for (int i = 0; i < 4; i++) {
-			client.login(email, "Wrong1234");
+			client.login(phone, "Wrong1234");
 		}
-		client.login(email, AccountTestClient.PASSWORD).andExpect(status().isOk());
+		client.login(phone, AccountTestClient.PASSWORD).andExpect(status().isOk());
 
 		for (int i = 0; i < 4; i++) {
-			client.login(email, "Wrong1234");
+			client.login(phone, "Wrong1234");
 		}
-		client.login(email, AccountTestClient.PASSWORD).andExpect(status().isOk());
-	}
-
-	@Test
-	void accessTokenOpensProtectedEndpoints() throws Exception {
-		client.activeUser(email);
-		Session session = client.loginSession(email);
-
-		mvc.perform(get("/api/v1/users/me").header(HttpHeaders.AUTHORIZATION, session.bearer()))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.email").value(email));
+		client.login(phone, AccountTestClient.PASSWORD).andExpect(status().isOk());
 	}
 
 	@Test
 	void refreshRotatesTheTokenAndReusingTheOldOneRevokesTheWholeChain() throws Exception {
-		client.activeUser(email);
-		Session session = client.loginSession(email);
+		client.userWithPhone(phone);
+		Session session = client.loginSession(phone);
 
 		MvcResult rotated = client.postJson(REFRESH, refreshJson(session.refreshToken()))
 			.andExpect(status().isOk())
@@ -220,8 +285,8 @@ class AuthApiIntegrationTests {
 
 	@Test
 	void logoutRevokesTheRefreshTokenAndIsIdempotent() throws Exception {
-		client.activeUser(email);
-		Session session = client.loginSession(email);
+		client.userWithPhone(phone);
+		Session session = client.loginSession(phone);
 
 		client.postJson(LOGOUT, refreshJson(session.refreshToken())).andExpect(status().isNoContent());
 		client.postJson(LOGOUT, refreshJson(session.refreshToken())).andExpect(status().isNoContent());
@@ -231,53 +296,139 @@ class AuthApiIntegrationTests {
 	}
 
 	@Test
-	void forgotPasswordAnswersTheSameForUnknownEmails() throws Exception {
-		client.postJson("/api/v1/auth/password/forgot", emailJson(AccountTestClient.uniqueEmail()))
-			.andExpect(status().isAccepted());
+	void forgotPasswordAnswersTheSameForUnknownNumbersWithoutTexting() throws Exception {
+		client.postJson(FORGOT, identifierJson(phone))
+			.andExpect(status().isAccepted())
+			.andExpect(jsonPath("$.channel").value("SMS"))
+			.andExpect(jsonPath("$.challengeId").isNotEmpty())
+			.andExpect(jsonPath("$.expiresInSeconds").value(300));
+
+		assertThat(sms.hasTexted(phone)).isFalse();
 	}
 
 	@Test
-	void passwordResetSetsTheNewPasswordAndLogsOutEverySession() throws Exception {
+	void passwordResetBySmsSetsTheNewPasswordAndLogsOutEverySession() throws Exception {
+		client.userWithPhone(phone);
+		Session session = client.loginSession(phone);
+		MvcResult started = client.postJson(FORGOT, identifierJson(phone)).andExpect(status().isAccepted()).andReturn();
+		String challengeId = AccountTestClient.read(started, "$.challengeId");
+
+		MvcResult verified = client
+			.postJson(VERIFY_RESET_CODE,
+					"""
+							{"challengeId":"%s","phone":"%s","otp":"%s"}""".formatted(challengeId, phone,
+							sms.lastCodeSentTo(phone).orElseThrow()))
+			.andExpect(status().isOk())
+			.andReturn();
+		String resetToken = AccountTestClient.read(verified, "$.resetToken");
+
+		client.postJson(RESET, resetJson(resetToken, NEW_PASSWORD)).andExpect(status().isNoContent());
+
+		client.login(phone, AccountTestClient.PASSWORD).andExpect(status().isUnauthorized());
+		client.login(phone, NEW_PASSWORD).andExpect(status().isOk());
+		client.postJson(REFRESH, refreshJson(session.refreshToken())).andExpect(status().isUnauthorized());
+		client.postJson(RESET, resetJson(resetToken, "Another789"))
+			.andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.code").value("RESET_TOKEN_INVALID"));
+	}
+
+	@Test
+	void passwordResetByVerifiedEmailUsesTheEmailedLink() throws Exception {
+		String email = AccountTestClient.uniqueEmail();
 		client.activeUser(email);
-		Session session = client.loginSession(email);
-		client.postJson("/api/v1/auth/password/forgot", emailJson(email)).andExpect(status().isAccepted());
+
+		client.postJson(FORGOT, identifierJson(email))
+			.andExpect(status().isAccepted())
+			.andExpect(jsonPath("$.channel").value("EMAIL"));
 		String resetToken = mailer.passwordResetTokenFor(email).orElseThrow();
 
-		client.postJson("/api/v1/auth/password/reset", """
-				{"token":"%s","newPassword":"NewSecret456"}""".formatted(resetToken)).andExpect(status().isNoContent());
+		client.postJson(RESET, resetJson(resetToken, NEW_PASSWORD)).andExpect(status().isNoContent());
+		client.login(email, NEW_PASSWORD).andExpect(status().isOk());
+	}
 
+	@Test
+	void optionalEmailCanBeUsedToLogInOnlyOnceVerified() throws Exception {
+		client.userWithPhone(phone);
+		Session session = client.loginSession(phone);
+		String email = AccountTestClient.uniqueEmail();
+
+		mvc.perform(AccountTestClient.jsonRequest(put("/api/v1/users/me/email"), "{\"email\":\"" + email + "\"}")
+			.header(HttpHeaders.AUTHORIZATION, session.bearer())).andExpect(status().isAccepted());
 		client.login(email, AccountTestClient.PASSWORD).andExpect(status().isUnauthorized());
-		client.login(email, "NewSecret456").andExpect(status().isOk());
-		client.postJson(REFRESH, refreshJson(session.refreshToken())).andExpect(status().isUnauthorized());
-		client.postJson("/api/v1/auth/password/reset", """
-				{"token":"%s","newPassword":"Another789"}""".formatted(resetToken))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value("INVALID_PASSWORD_RESET_TOKEN"));
+
+		String token = mailer.verificationTokenFor(email).orElseThrow();
+		client.postJson(VERIFY_EMAIL, "{\"token\":\"" + token + "\"}").andExpect(status().isNoContent());
+
+		client.login(email, AccountTestClient.PASSWORD).andExpect(status().isOk());
+		client.postJson(VERIFY_EMAIL, "{\"token\":\"" + token + "\"}")
+			.andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.code").value("INVALID_VERIFICATION_TOKEN"));
 	}
 
-	private ResultActions register(String email, String password) throws Exception {
-		return client.postJson(REGISTER, """
-				{"email":"%s","password":"%s","displayName":"An Nguyen"}""".formatted(email, password));
+	@Test
+	void changingThePasswordLogsOutOtherDevicesButKeepsThisOne() throws Exception {
+		client.userWithPhone(phone);
+		Session thisDevice = client.loginSession(phone);
+		Session otherDevice = client.loginSession(phone);
+
+		mvc.perform(
+				AccountTestClient
+					.jsonRequest(put("/api/v1/users/me/password"),
+							"""
+									{"currentPassword":"%s","newPassword":"%s"}""".formatted(AccountTestClient.PASSWORD,
+									NEW_PASSWORD))
+					.header(HttpHeaders.AUTHORIZATION, thisDevice.bearer()))
+			.andExpect(status().isNoContent());
+
+		client.postJson(REFRESH, refreshJson(otherDevice.refreshToken())).andExpect(status().isUnauthorized());
+		client.postJson(REFRESH, refreshJson(thisDevice.refreshToken())).andExpect(status().isOk());
+		client.login(phone, NEW_PASSWORD).andExpect(status().isOk());
 	}
 
-	private static RequestBuilder registration(String email, String clientIp) {
-		return post(REGISTER).contentType(MediaType.APPLICATION_JSON).content("""
-				{"email":"%s","password":"Secret123","displayName":"An Nguyen"}""".formatted(email)).with(request -> {
-			request.setRemoteAddr(clientIp);
-			return request;
-		});
+	private String sendRegistrationCode(String phoneNumber) throws Exception {
+		MvcResult result = client.postJson(SEND_CODE, phoneJson(phoneNumber))
+			.andExpect(status().isAccepted())
+			.andReturn();
+		return AccountTestClient.read(result, "$.challengeId");
 	}
 
-	private String verificationToken() {
-		return mailer.verificationTokenFor(email).orElseThrow();
+	private ResultActions register(String challengeId, String code, String password) throws Exception {
+		return client.postJson(REGISTER, registrationJson(phone, challengeId, code, password, "1.0"));
 	}
 
-	private static String tokenJson(String token) {
-		return "{\"token\":\"" + token + "\"}";
+	private static String registrationJson(String phoneNumber, String challengeId, String code, String password,
+			String policyVersion) {
+		return """
+				{"phone":"%s","challengeId":"%s","otp":"%s","password":"%s","displayName":"An Nguyen",
+				 "termsVersion":"%s","privacyVersion":"1.0","pushMarketing":false}""".formatted(phoneNumber,
+				challengeId, code, password, policyVersion);
 	}
 
-	private static String emailJson(String email) {
-		return "{\"email\":\"" + email + "\"}";
+	private RequestBuilder registration(String clientIp) {
+		return post(REGISTER).contentType(MediaType.APPLICATION_JSON)
+			.content("""
+					{"phone":"%s","challengeId":"%s","otp":"123456","password":"Secret123","displayName":"An"}"""
+				.formatted(AccountTestClient.uniquePhone(), UUID.randomUUID()))
+			.with(request -> {
+				request.setRemoteAddr(clientIp);
+				return request;
+			});
+	}
+
+	private static String localFormOf(String phoneE164) {
+		return "0" + phoneE164.substring("+84".length());
+	}
+
+	private static String phoneJson(String phoneNumber) {
+		return "{\"phone\":\"" + phoneNumber + "\"}";
+	}
+
+	private static String identifierJson(String identifier) {
+		return "{\"identifier\":\"" + identifier + "\"}";
+	}
+
+	private static String resetJson(String resetToken, String newPassword) {
+		return "{\"resetToken\":\"" + resetToken + "\",\"newPassword\":\"" + newPassword + "\"}";
 	}
 
 	private static String refreshJson(String refreshToken) {

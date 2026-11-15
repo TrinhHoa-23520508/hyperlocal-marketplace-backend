@@ -5,4 +5,4 @@ pluginManagement {
 	}
 }
 
-rootProject.name = "hyperlocal-marketplace-backend"
+rootProject.name = "nearby_backend"

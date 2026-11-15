@@ -11,7 +11,7 @@ import vn.edu.uit.nearby.nearby_backend.support.IntegrationTest;
 @IntegrationTest
 class NearbyBackendApplicationTests {
 
-	private static final int DATA_DESIGN_TABLES = 22;
+	private static final int DATA_DESIGN_TABLES = 23;
 
 	private static final int OUTBOX_TABLES = 1;
 

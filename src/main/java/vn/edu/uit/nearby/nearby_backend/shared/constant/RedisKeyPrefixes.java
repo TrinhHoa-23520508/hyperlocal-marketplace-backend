@@ -18,6 +18,12 @@ public final class RedisKeyPrefixes {
 
 	public static final String ACCOUNT_EMAILS = "account-emails:";
 
+	public static final String OTP_CHALLENGE = "otp:";
+
+	public static final String OTP_RESEND_COOLDOWN = "otp-cooldown:";
+
+	public static final String OTP_DAILY_QUOTA = "otp-daily:";
+
 	private RedisKeyPrefixes() {
 	}
 

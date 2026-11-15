@@ -5,6 +5,7 @@ import java.time.Duration;
 import org.springframework.stereotype.Component;
 
 import vn.edu.uit.nearby.nearby_backend.identity.AppParameters;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.otp.OtpPolicy;
 
 /**
  * Typed access to the identity module's runtime parameters; values are seeded by Flyway.
@@ -25,6 +26,18 @@ public class IdentityParameters {
 	private static final String PASSWORD_RESET_TTL_MINUTES = "auth.password_reset_ttl_minutes";
 
 	private static final String LOCATION_TERMS_VERSION = "consent.location_terms_version";
+
+	private static final String TERMS_VERSION = "consent.terms_version";
+
+	private static final String PRIVACY_VERSION = "consent.privacy_version";
+
+	private static final String OTP_TTL_SECONDS = "otp.ttl_s";
+
+	private static final String OTP_MAX_ATTEMPTS = "otp.max_attempts";
+
+	private static final String OTP_RESEND_SECONDS = "otp.resend_s";
+
+	private static final String OTP_MAX_PER_DAY = "otp.max_per_day";
 
 	private static final String IMAGE_MAX_BYTES = "image.max_bytes";
 
@@ -60,6 +73,20 @@ public class IdentityParameters {
 
 	public String locationTermsVersion() {
 		return parameters.get(LOCATION_TERMS_VERSION);
+	}
+
+	public String termsVersion() {
+		return parameters.get(TERMS_VERSION);
+	}
+
+	public String privacyVersion() {
+		return parameters.get(PRIVACY_VERSION);
+	}
+
+	public OtpPolicy otpPolicy() {
+		return new OtpPolicy(Duration.ofSeconds(parameters.getInt(OTP_TTL_SECONDS)),
+				parameters.getInt(OTP_MAX_ATTEMPTS), Duration.ofSeconds(parameters.getInt(OTP_RESEND_SECONDS)),
+				parameters.getInt(OTP_MAX_PER_DAY));
 	}
 
 	public long imageMaxBytes() {

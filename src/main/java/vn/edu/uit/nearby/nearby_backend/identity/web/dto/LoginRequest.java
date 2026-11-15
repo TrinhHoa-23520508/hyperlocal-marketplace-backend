@@ -1,9 +1,11 @@
 package vn.edu.uit.nearby.nearby_backend.identity.web.dto;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-public record LoginRequest(@NotBlank @Email @Size(max = 255) String email, @NotBlank @Size(max = 200) String password) {
+/**
+ * @param identifier the phone number, or an email address verified on the account
+ */
+public record LoginRequest(@NotBlank @Size(max = 254) String identifier, @NotBlank @Size(max = 200) String password) {
 
 }

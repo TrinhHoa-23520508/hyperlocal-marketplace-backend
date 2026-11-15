@@ -3,7 +3,7 @@ package vn.edu.uit.nearby.nearby_backend.identity.web.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-public record ResetPasswordRequest(@NotBlank @Size(max = 100) String token,
+public record ResetPasswordRequest(@NotBlank @Size(max = 100) String resetToken,
 		@NotBlank @Size(max = 200) String newPassword) {
 
 }

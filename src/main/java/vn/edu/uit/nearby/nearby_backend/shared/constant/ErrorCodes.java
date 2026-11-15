@@ -26,23 +26,47 @@ public final class ErrorCodes {
 
 	public static final String INVALID_EMAIL = "INVALID_EMAIL";
 
-	public static final String WEAK_PASSWORD = "WEAK_PASSWORD";
+	public static final String INVALID_PHONE = "INVALID_PHONE";
 
-	public static final String REGISTRATION_REJECTED = "REGISTRATION_REJECTED";
+	public static final String OTP_INVALID = "OTP_INVALID";
+
+	public static final String OTP_EXPIRED = "OTP_EXPIRED";
+
+	public static final String OTP_ATTEMPTS_EXCEEDED = "OTP_ATTEMPTS_EXCEEDED";
+
+	public static final String OTP_RATE_LIMITED = "OTP_RATE_LIMITED";
+
+	public static final String SMS_UNAVAILABLE = "SMS_UNAVAILABLE";
+
+	public static final String PHONE_ALREADY_REGISTERED = "PHONE_ALREADY_REGISTERED";
+
+	public static final String CONSENT_REQUIRED = "CONSENT_REQUIRED";
+
+	public static final String POLICY_VERSION_STALE = "POLICY_VERSION_STALE";
+
+	public static final String LOGIN_LOCKED = "LOGIN_LOCKED";
+
+	public static final String RESET_TOKEN_INVALID = "RESET_TOKEN_INVALID";
+
+	public static final String CURRENT_PASSWORD_INVALID = "CURRENT_PASSWORD_INVALID";
+
+	public static final String PASSWORD_REUSED = "PASSWORD_REUSED";
+
+	public static final String EMAIL_UNAVAILABLE = "EMAIL_UNAVAILABLE";
+
+	public static final String EMAIL_NOT_SET = "EMAIL_NOT_SET";
+
+	public static final String WEAK_PASSWORD = "WEAK_PASSWORD";
 
 	public static final String INVALID_VERIFICATION_TOKEN = "INVALID_VERIFICATION_TOKEN";
 
 	public static final String INVALID_CREDENTIALS = "INVALID_CREDENTIALS";
-
-	public static final String EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED";
 
 	public static final String ACCOUNT_LOCKED = "ACCOUNT_LOCKED";
 
 	public static final String INVALID_REFRESH_TOKEN = "INVALID_REFRESH_TOKEN";
 
 	public static final String REFRESH_TOKEN_REUSED = "REFRESH_TOKEN_REUSED";
-
-	public static final String INVALID_PASSWORD_RESET_TOKEN = "INVALID_PASSWORD_RESET_TOKEN";
 
 	public static final String USER_NOT_FOUND = "USER_NOT_FOUND";
 

@@ -149,7 +149,8 @@ class AdminUserApiIntegrationTests {
 
 		mvc.perform(get(ADMIN_USERS + "/" + user.getId()).header(HttpHeaders.AUTHORIZATION, adminBearer))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.email").value(user.getEmail()))
+			.andExpect(jsonPath("$.email").value(user.emailAddress().orElseThrow().value()))
+			.andExpect(jsonPath("$.phone").value(user.phoneNumber().orElseThrow().value()))
 			.andExpect(jsonPath("$.emailVerified").value(true));
 	}
 

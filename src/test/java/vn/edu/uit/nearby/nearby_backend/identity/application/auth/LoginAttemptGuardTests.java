@@ -14,16 +14,17 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityParametersFixture;
-import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.PhoneNumber;
+import vn.edu.uit.nearby.nearby_backend.shared.error.BusinessException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.RateLimitExceededException;
 import vn.edu.uit.nearby.nearby_backend.shared.ratelimit.RateLimiter;
 
 @ExtendWith(MockitoExtension.class)
 class LoginAttemptGuardTests {
 
-	private static final EmailAddress EMAIL = EmailAddress.of("an@example.com");
+	private static final PhoneNumber PHONE = PhoneNumber.of("0912345678");
 
-	private static final String KEY = "login-failures:an@example.com";
+	private static final String KEY = "login-failures:+84912345678";
 
 	@Mock
 	RateLimiter rateLimiter;
@@ -33,31 +34,34 @@ class LoginAttemptGuardTests {
 	}
 
 	@Test
-	void emailUnderTheFailureLimitMayTryAgain() {
+	void identifierUnderTheFailureLimitMayTryAgain() {
 		when(rateLimiter.isExhausted(KEY, 5)).thenReturn(false);
 
-		assertThatCode(() -> guard().ensureNotBlocked(EMAIL)).doesNotThrowAnyException();
+		assertThatCode(() -> guard().ensureNotBlocked(PHONE)).doesNotThrowAnyException();
 	}
 
 	@Test
-	void emailAtTheFailureLimitIsBlockedUntilTheWindowEnds() {
+	void identifierAtTheFailureLimitIsBlockedUntilTheWindowEnds() {
 		when(rateLimiter.isExhausted(KEY, 5)).thenReturn(true);
 		when(rateLimiter.remainingWindow(KEY)).thenReturn(Duration.ofMinutes(7));
 
-		assertThatThrownBy(() -> guard().ensureNotBlocked(EMAIL)).isInstanceOfSatisfying(
-				RateLimitExceededException.class, ex -> assertThat(ex.getRetryAfter()).contains(Duration.ofMinutes(7)));
+		assertThatThrownBy(() -> guard().ensureNotBlocked(PHONE))
+			.isInstanceOfSatisfying(RateLimitExceededException.class, ex -> {
+				assertThat(ex.getRetryAfter()).contains(Duration.ofMinutes(7));
+				assertThat(((BusinessException) ex).getCode()).isEqualTo("LOGIN_LOCKED");
+			});
 	}
 
 	@Test
 	void failureIsCountedInTheLockoutWindow() {
-		guard().recordFailure(EMAIL);
+		guard().recordFailure(PHONE);
 
 		verify(rateLimiter).tryAcquire(KEY, 5, Duration.ofMinutes(15));
 	}
 
 	@Test
 	void successfulLoginClearsTheFailures() {
-		guard().clearFailures(EMAIL);
+		guard().clearFailures(PHONE);
 
 		verify(rateLimiter).reset(KEY);
 	}

@@ -32,11 +32,41 @@ Key variables:
 | `MINIO_ENDPOINT` | `http://localhost:9000` | Address the backend uses to reach MinIO. |
 | `MINIO_PUBLIC_ENDPOINT` | `http://10.0.2.2:9000` | Host the Android app uses for presigned image URLs (see section 6). |
 | `SERVER_PORT` | `8080` | API port. |
+| `SMS_PROVIDER` | `log` | `log` writes the one-time code to the backend log (search for `[sms disabled]`); `esms` sends it through eSMS.vn (section 2.1). |
+| `ESMS_API_KEY` / `ESMS_SECRET_KEY` / `ESMS_BRANDNAME` | empty | eSMS credentials and the registered brandname. Required when `SMS_PROVIDER=esms`; the app refuses to start without them. |
+| `ESMS_SANDBOX` | `true` | `true`: eSMS checks the request but neither delivers nor charges. Set `false` to send real SMS. |
+| `SMS_OTP_TEMPLATE` | Vietnamese text with `{code}` | SMS body. Must match the template registered with eSMS character for character. |
+| `OTP_HASH_SECRET` | dev value | HMAC key for code hashes stored in Redis, at least 32 bytes. |
 | `MAIL_ENABLED` | `false` | When `false`, verification and password reset links are written to the backend log (search for `[mail disabled]`) instead of being emailed. |
+| `MAIL_HOST` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` | Gmail / `587` / empty | SMTP server and login (section 2.2). |
+| `MAIL_SMTP_AUTH` / `MAIL_STARTTLS` | `true` | Required by Gmail and most providers. |
+| `MAIL_FROM` | `Nearby <no-reply@nearby.local>` | Sender. With Gmail use the same address as `MAIL_USERNAME`. |
 | `EMAIL_VERIFICATION_URL` / `PASSWORD_RESET_URL` | `nearby://...` | Links in account emails. The token is appended as `?token=...`. |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | `admin@nearby.local` / `Nearby2026` | First admin account, created on startup if no account uses the email yet. |
 
+OTP limits (`otp.ttl_s`, `otp.max_attempts`, `otp.resend_s`, `otp.max_per_day`) and policy versions (`consent.terms_version`, `consent.privacy_version`) are runtime parameters in the `app_parameters` table, seeded by Flyway, not environment variables.
+
 Real OS environment variables, and IntelliJ *Run Configuration* variables, always override values in `.env`.
+
+### 2.1 Real SMS codes with eSMS.vn
+
+Vietnamese carriers only deliver application SMS from a **registered brandname**, so every provider needs one.
+
+1. Create an account at https://account.esms.vn and open **Quản lý API** to copy the `ApiKey` and `SecretKey`.
+2. Get a brandname: register your own (for example `NEARBY`, needs legal documents and takes days to weeks), or ask eSMS support for their shared test brandname for developers.
+3. Register a **customer care (CSKH) template** for that brandname, for example `{code} la ma xac minh Nearby cua ban, het han sau 5 phut. Khong chia se ma nay.` Put the same text in `SMS_OTP_TEMPLATE`. A mismatch makes eSMS answer code `146`.
+4. Top up the account balance.
+5. Set `SMS_PROVIDER=esms`, the three credentials and keep `ESMS_SANDBOX=true`. Call `POST /api/v1/auth/register/otp`; the log line `SMS to *********678 accepted by eSMS` means the key, brandname and template are right.
+6. Set `ESMS_SANDBOX=false` and send to your own phone.
+
+Common eSMS codes: `100` accepted, `101` wrong key, `104` brandname not found, `146` template mismatch. Any failure is answered `503 SMS_UNAVAILABLE` and does not use up the daily quota.
+
+### 2.2 Real emails with Gmail
+
+1. Turn on **2-Step Verification** for the Google account that sends the mail.
+2. Open https://myaccount.google.com/apppasswords, create an app password named `Nearby backend` and copy the 16 characters.
+3. In `.env`: `MAIL_ENABLED=true`, `MAIL_HOST=smtp.gmail.com`, `MAIL_PORT=587`, `MAIL_USERNAME=<address>@gmail.com`, `MAIL_PASSWORD=<app password>`, `MAIL_SMTP_AUTH=true`, `MAIL_STARTTLS=true`, `MAIL_FROM=Nearby <<address>@gmail.com>`.
+4. Gmail allows about 500 emails per day; the backend also limits each address to 5 account emails per hour.
 
 ## 3. Run the app
 

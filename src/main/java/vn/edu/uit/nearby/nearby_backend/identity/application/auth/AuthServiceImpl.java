@@ -9,7 +9,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import lombok.extern.slf4j.Slf4j;
+
+import vn.edu.uit.nearby.nearby_backend.identity.domain.AccountIdentifier;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.PhoneNumber;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.RevokeReason;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.StoredRefreshToken;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.RefreshTokenRepository;
@@ -18,6 +23,7 @@ import vn.edu.uit.nearby.nearby_backend.shared.constant.ErrorCodes;
 import vn.edu.uit.nearby.nearby_backend.shared.error.AuthenticationFailedException;
 import vn.edu.uit.nearby.nearby_backend.shared.security.TokenService;
 
+@Slf4j
 @Service
 public class AuthServiceImpl implements AuthService {
 
@@ -33,8 +39,8 @@ public class AuthServiceImpl implements AuthService {
 
 	private final Clock clock;
 
-	// Checked when the email is unknown, so an unknown email and a wrong password take
-	// the same time and cannot be told apart.
+	// Checked when the identifier is unknown, so an unknown account and a wrong password
+	// take the same time and cannot be told apart.
 	private final String unknownUserPasswordHash;
 
 	public AuthServiceImpl(UserRepository users, RefreshTokenRepository refreshTokens, UserSessions sessions,
@@ -51,10 +57,10 @@ public class AuthServiceImpl implements AuthService {
 	@Override
 	@Transactional
 	public TokenPair login(LoginCommand command) {
-		EmailAddress email = EmailAddress.of(command.email());
-		loginAttempts.ensureNotBlocked(email);
-		User user = authenticate(email, command.password());
-		loginAttempts.clearFailures(email);
+		AccountIdentifier identifier = AccountIdentifier.parse(command.identifier());
+		loginAttempts.ensureNotBlocked(identifier);
+		User user = authenticate(identifier, command.password());
+		loginAttempts.clearFailures(identifier);
 		user.ensureCanLogIn();
 		return sessions.start(user);
 	}
@@ -68,10 +74,8 @@ public class AuthServiceImpl implements AuthService {
 		if (stored.isExpiredAt(now)) {
 			throw invalidRefreshToken();
 		}
-		if (stored.isRevoked() || refreshTokens.revokeIfActive(stored.getId(), now) == 0) {
-			refreshTokens.revokeFamily(stored.getFamilyId(), now);
-			throw new AuthenticationFailedException(ErrorCodes.REFRESH_TOKEN_REUSED,
-					"This session is no longer valid, please log in again.");
+		if (stored.isRevoked() || refreshTokens.revokeIfActive(stored.getId(), now, RevokeReason.ROTATED) == 0) {
+			revokeStolenFamily(stored, now);
 		}
 		User user = users.getRequired(stored.getUserId());
 		user.ensureCanLogIn();
@@ -82,18 +86,34 @@ public class AuthServiceImpl implements AuthService {
 	@Transactional
 	public void logout(String refreshToken) {
 		refreshTokens.findByTokenHash(TokenService.sha256Hex(refreshToken))
-			.ifPresent(stored -> refreshTokens.revokeIfActive(stored.getId(), clock.instant()));
+			.ifPresent(stored -> refreshTokens.revokeIfActive(stored.getId(), clock.instant(), RevokeReason.LOGOUT));
 	}
 
-	private User authenticate(EmailAddress email, String password) {
-		Optional<User> user = users.findByEmail(email.value());
+	private User authenticate(AccountIdentifier identifier, String password) {
+		Optional<User> user = findLoginAccount(identifier);
 		String passwordHash = user.map(User::getPasswordHash).orElse(unknownUserPasswordHash);
 		boolean isPasswordCorrect = passwordEncoder.matches(password, passwordHash);
 		if (user.isEmpty() || !isPasswordCorrect) {
-			loginAttempts.recordFailure(email);
-			throw new AuthenticationFailedException(ErrorCodes.INVALID_CREDENTIALS, "Email or password is incorrect.");
+			loginAttempts.recordFailure(identifier);
+			throw new AuthenticationFailedException(ErrorCodes.INVALID_CREDENTIALS,
+					"Phone number, email or password is incorrect.");
 		}
 		return user.get();
+	}
+
+	private Optional<User> findLoginAccount(AccountIdentifier identifier) {
+		return switch (identifier) {
+			case PhoneNumber phone -> users.findByPhoneE164(phone.value());
+			case EmailAddress email -> users.findByEmail(email.value()).filter(User::hasVerifiedEmail);
+		};
+	}
+
+	private void revokeStolenFamily(StoredRefreshToken stored, Instant now) {
+		refreshTokens.revokeFamily(stored.getFamilyId(), now, RevokeReason.REUSE_DETECTED);
+		log.warn("Security event: reuse of rotated refresh token detected for user {}, session {} revoked",
+				stored.getUserId(), stored.getFamilyId());
+		throw new AuthenticationFailedException(ErrorCodes.REFRESH_TOKEN_REUSED,
+				"This session is no longer valid, please log in again.");
 	}
 
 	private static AuthenticationFailedException invalidRefreshToken() {

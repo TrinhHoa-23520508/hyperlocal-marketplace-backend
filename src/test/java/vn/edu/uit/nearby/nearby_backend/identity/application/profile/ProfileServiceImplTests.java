@@ -66,10 +66,12 @@ class ProfileServiceImplTests {
 
 		UserProfile profile = profileService.getProfile(user.getId());
 
-		assertThat(profile.email()).isEqualTo(UserFixtures.EMAIL);
+		assertThat(profile.phone()).isEqualTo(UserFixtures.PHONE);
+		assertThat(profile.phoneVerified()).isTrue();
+		assertThat(profile.email()).isNull();
 		assertThat(profile.avatarUrl()).isNull();
 		assertThat(profile.homeArea()).isNull();
-		assertThat(profile.emailVerified()).isTrue();
+		assertThat(profile.emailVerified()).isFalse();
 		verifyNoInteractions(storage);
 	}
 

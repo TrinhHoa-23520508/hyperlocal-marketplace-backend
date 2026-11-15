@@ -15,11 +15,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import vn.edu.uit.nearby.nearby_backend.identity.domain.RevokeReason;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.StoredRefreshToken;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.StoredRefreshToken.RefreshTokenFamily;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.UserFixtures;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.RefreshTokenRepository;
+import vn.edu.uit.nearby.nearby_backend.shared.constant.SecurityConstants;
 import vn.edu.uit.nearby.nearby_backend.shared.security.JwtFixture;
 import vn.edu.uit.nearby.nearby_backend.shared.security.TokenService;
 
@@ -47,7 +49,7 @@ class UserSessionsTests {
 		assertThat(stored.getExpiresAt()).isEqualTo(tokens.refreshTokenExpiresAt());
 		assertThat(tokens.accessTokenExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(15)));
 		assertThat(tokens.refreshTokenExpiresAt()).isEqualTo(NOW.plus(Duration.ofDays(30)));
-		assertThat(tokens.accessToken().split("\\.")).hasSize(3);
+		assertThat(sessionClaimOf(tokens.accessToken())).isEqualTo(stored.getFamilyId().toString());
 	}
 
 	@Test
@@ -64,9 +66,23 @@ class UserSessionsTests {
 	void endingAllSessionsRevokesEveryTokenOfTheUser() {
 		UUID userId = UUID.randomUUID();
 
-		sessions().endAll(userId);
+		sessions().endAll(userId, RevokeReason.SANCTION);
 
-		verify(refreshTokens).revokeAllOfUser(userId, NOW);
+		verify(refreshTokens).revokeAllOfUser(userId, NOW, RevokeReason.SANCTION);
+	}
+
+	@Test
+	void endingOtherSessionsKeepsTheCurrentFamily() {
+		UUID userId = UUID.randomUUID();
+		UUID currentSession = UUID.randomUUID();
+
+		sessions().endAllExcept(userId, currentSession, RevokeReason.PASSWORD_CHANGED);
+
+		verify(refreshTokens).revokeOtherFamilies(userId, currentSession, NOW, RevokeReason.PASSWORD_CHANGED);
+	}
+
+	private static String sessionClaimOf(String accessToken) {
+		return JwtFixture.tokenDecoderAt(CLOCK).decode(accessToken).getClaimAsString(SecurityConstants.SESSION_CLAIM);
 	}
 
 	private StoredRefreshToken savedToken() {

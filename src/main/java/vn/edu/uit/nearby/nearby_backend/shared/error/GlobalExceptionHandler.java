@@ -95,6 +95,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 			case OperationNotAllowedException e -> HttpStatus.FORBIDDEN;
 			case RateLimitExceededException e -> HttpStatus.TOO_MANY_REQUESTS;
 			case AuthenticationFailedException e -> HttpStatus.UNAUTHORIZED;
+			case UnprocessableRequestException e -> HttpStatus.UNPROCESSABLE_CONTENT;
+			case ServiceUnavailableException e -> HttpStatus.SERVICE_UNAVAILABLE;
 		};
 	}
 

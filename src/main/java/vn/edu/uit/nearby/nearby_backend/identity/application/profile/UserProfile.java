@@ -9,7 +9,8 @@ import vn.edu.uit.nearby.nearby_backend.identity.domain.AccountStatus;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.UserRole;
 import vn.edu.uit.nearby.nearby_backend.shared.geo.GeoPoint;
 
-public record UserProfile(UUID id, String email, String displayName, @Nullable String avatarUrl, UserRole role,
-		AccountStatus status, @Nullable GeoPoint homeArea, boolean emailVerified, Instant createdAt) {
+public record UserProfile(UUID id, @Nullable String phone, @Nullable String email, String displayName,
+		@Nullable String avatarUrl, UserRole role, AccountStatus status, @Nullable GeoPoint homeArea,
+		boolean phoneVerified, boolean emailVerified, Instant createdAt) {
 
 }

@@ -15,6 +15,7 @@ import vn.edu.uit.nearby.nearby_backend.identity.UserBanned;
 import vn.edu.uit.nearby.nearby_backend.identity.UserUnbanned;
 import vn.edu.uit.nearby.nearby_backend.identity.application.auth.UserSessions;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.AuditAction;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.RevokeReason;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserSpecifications;
@@ -53,7 +54,7 @@ public class UserAdministrationServiceImpl implements UserAdministrationService 
 		int limit = CursorPage.clampLimit(criteria.limit());
 		Cursor cursor = Cursor.decode(criteria.cursor()).orElse(null);
 		Specification<User> matching = Specification.allOf(UserSpecifications.hasStatus(criteria.status()),
-				UserSpecifications.emailOrDisplayNameContains(criteria.query()), UserSpecifications.after(cursor));
+				UserSpecifications.contactOrDisplayNameContains(criteria.query()), UserSpecifications.after(cursor));
 		List<AdminUserView> fetched = users
 			.findBy(matching, query -> query.sortBy(UserSpecifications.NEWEST_FIRST).limit(limit + 1).all())
 			.stream()
@@ -75,7 +76,7 @@ public class UserAdministrationServiceImpl implements UserAdministrationService 
 		requireLockable(adminId, user);
 		Instant now = clock.instant();
 		user.lock(now);
-		sessions.endAll(userId);
+		sessions.endAll(userId, RevokeReason.SANCTION);
 		auditLog.recordUserAction(adminId, AuditAction.USER_LOCKED, userId, Map.of(REASON, reason));
 		events.publishEvent(new UserBanned(userId, now));
 		return AdminUserView.of(user);

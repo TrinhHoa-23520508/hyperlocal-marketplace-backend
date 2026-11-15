@@ -6,9 +6,9 @@ import java.util.Map;
 import lombok.Getter;
 
 @Getter
-public abstract sealed class BusinessException extends RuntimeException
-		permits ResourceNotFoundException, ConflictException, InvalidRequestException, OperationNotAllowedException,
-		RateLimitExceededException, AuthenticationFailedException {
+public abstract sealed class BusinessException extends RuntimeException permits ResourceNotFoundException,
+		ConflictException, InvalidRequestException, OperationNotAllowedException, RateLimitExceededException,
+		AuthenticationFailedException, UnprocessableRequestException, ServiceUnavailableException {
 
 	@Serial
 	private static final long serialVersionUID = 1L;

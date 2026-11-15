@@ -19,6 +19,8 @@ import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityProperties;
 import vn.edu.uit.nearby.nearby_backend.identity.application.port.AccountMailer;
 import vn.edu.uit.nearby.nearby_backend.identity.application.port.OneTimeTokenPurpose;
 import vn.edu.uit.nearby.nearby_backend.identity.application.port.OneTimeTokenStore;
+import vn.edu.uit.nearby.nearby_backend.identity.application.port.OneTimeTokenSubject;
+import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.UserFixtures;
 import vn.edu.uit.nearby.nearby_backend.shared.ratelimit.RateLimiter;
@@ -27,10 +29,14 @@ import vn.edu.uit.nearby.nearby_backend.shared.ratelimit.RateLimiter;
 class AccountEmailDispatcherTests {
 
 	private static final IdentityProperties PROPERTIES = new IdentityProperties("nearby://verify-email",
-			"https://nearby.example/reset?lang=vi", new IdentityProperties.Mail(false, "no-reply@nearby.local"),
+			"https://nearby.example/reset?lang=vi", IdentityParametersFixture.OTP,
 			new IdentityProperties.BootstrapAdmin(null, null, "Admin"));
 
-	private final User user = UserFixtures.pendingUser();
+	private static final EmailAddress RECIPIENT = EmailAddress.of(UserFixtures.EMAIL);
+
+	private final User user = UserFixtures.userWithUnverifiedEmail();
+
+	private final OneTimeTokenSubject subject = new OneTimeTokenSubject(user.getId(), UserFixtures.EMAIL);
 
 	@Mock
 	OneTimeTokenStore tokens;
@@ -48,24 +54,22 @@ class AccountEmailDispatcherTests {
 	@Test
 	void verificationEmailCarriesASingleUseTokenValidFor24Hours() {
 		givenWithinQuota();
-		when(tokens.issue(OneTimeTokenPurpose.EMAIL_VERIFICATION, user.getId(), Duration.ofHours(24)))
-			.thenReturn("tok123");
+		when(tokens.issue(OneTimeTokenPurpose.EMAIL_VERIFICATION, subject, Duration.ofHours(24))).thenReturn("tok123");
 
-		dispatcher().sendEmailVerification(user);
+		dispatcher().sendEmailVerification(user, RECIPIENT);
 
-		verify(mailer).sendEmailVerification(user.emailAddress(), UserFixtures.DISPLAY_NAME,
+		verify(mailer).sendEmailVerification(RECIPIENT, UserFixtures.DISPLAY_NAME,
 				"nearby://verify-email?token=tok123");
 	}
 
 	@Test
 	void resetEmailKeepsTheQueryOfTheConfiguredUrl() {
 		givenWithinQuota();
-		when(tokens.issue(OneTimeTokenPurpose.PASSWORD_RESET, user.getId(), Duration.ofMinutes(30)))
-			.thenReturn("tok456");
+		when(tokens.issue(OneTimeTokenPurpose.PASSWORD_RESET, subject, Duration.ofMinutes(30))).thenReturn("tok456");
 
-		dispatcher().sendPasswordReset(user);
+		dispatcher().sendPasswordReset(user, RECIPIENT);
 
-		verify(mailer).sendPasswordReset(user.emailAddress(), UserFixtures.DISPLAY_NAME,
+		verify(mailer).sendPasswordReset(RECIPIENT, UserFixtures.DISPLAY_NAME,
 				"https://nearby.example/reset?lang=vi&token=tok456");
 	}
 
@@ -73,8 +77,8 @@ class AccountEmailDispatcherTests {
 	void emailsOverTheHourlyQuotaAreSkippedSilently() {
 		when(rateLimiter.tryAcquire(anyString(), anyInt(), eq(Duration.ofHours(1)))).thenReturn(false);
 
-		dispatcher().sendEmailVerification(user);
-		dispatcher().sendPasswordReset(user);
+		dispatcher().sendEmailVerification(user, RECIPIENT);
+		dispatcher().sendPasswordReset(user, RECIPIENT);
 
 		verifyNoInteractions(tokens, mailer);
 	}

@@ -29,13 +29,14 @@ public final class UserSpecifications {
 		return (root, query, cb) -> status == null ? cb.conjunction() : cb.equal(root.get("status"), status);
 	}
 
-	public static Specification<User> emailOrDisplayNameContains(@Nullable String text) {
+	public static Specification<User> contactOrDisplayNameContains(@Nullable String text) {
 		return (root, query, cb) -> {
 			if (text == null || text.isBlank()) {
 				return cb.conjunction();
 			}
 			String pattern = "%" + escapeLike(text.trim().toLowerCase(Locale.ROOT)) + "%";
 			return cb.or(cb.like(cb.lower(root.get("email")), pattern, LIKE_ESCAPE),
+					cb.like(root.get("phoneE164"), pattern, LIKE_ESCAPE),
 					cb.like(cb.lower(root.get("displayName")), pattern, LIKE_ESCAPE));
 		};
 	}

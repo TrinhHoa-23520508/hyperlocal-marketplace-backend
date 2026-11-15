@@ -19,6 +19,10 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+/**
+ * Account identified by a verified Vietnamese mobile number (ADR-18); the email address
+ * is an optional second channel that counts only once verified (FR-ID-09).
+ */
 @Getter
 @Entity
 @Table(name = "users")
@@ -28,11 +32,25 @@ public class User {
 	@Id
 	private UUID id;
 
-	@Column(nullable = false)
-	private String email;
+	@Getter(AccessLevel.NONE)
+	@Column(name = "phone_e164")
+	private @Nullable String phoneE164;
+
+	@Column(name = "phone_verified_at")
+	private @Nullable Instant phoneVerifiedAt;
+
+	@Getter(AccessLevel.NONE)
+	@Column
+	private @Nullable String email;
+
+	@Column(name = "email_verified_at")
+	private @Nullable Instant emailVerifiedAt;
 
 	@Column(name = "password_hash", nullable = false)
 	private String passwordHash;
+
+	@Column(name = "password_changed_at")
+	private @Nullable Instant passwordChangedAt;
 
 	@Column(name = "display_name", nullable = false)
 	private String displayName;
@@ -52,21 +70,6 @@ public class User {
 	@Column(name = "home_area", columnDefinition = "geography(Point,4326)")
 	private @Nullable Point homeArea;
 
-	@Getter(AccessLevel.NONE)
-	@Column(name = "consent_at")
-	private @Nullable Instant consentAt;
-
-	@Getter(AccessLevel.NONE)
-	@Column(name = "consent_terms_version")
-	private @Nullable String consentTermsVersion;
-
-	@Getter(AccessLevel.NONE)
-	@Column(name = "consent_withdrawn_at")
-	private @Nullable Instant consentWithdrawnAt;
-
-	@Column(name = "email_verified_at")
-	private @Nullable Instant emailVerifiedAt;
-
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
@@ -76,53 +79,88 @@ public class User {
 	@Version
 	private long version;
 
-	private User(EmailAddress email, String passwordHash, String displayName, UserRole role, Instant now) {
+	private User(String passwordHash, String displayName, UserRole role, Instant now) {
 		this.id = UUID.randomUUID();
-		this.email = email.value();
 		this.passwordHash = passwordHash;
 		this.displayName = displayName;
 		this.role = role;
-		this.status = AccountStatus.PENDING;
+		this.status = AccountStatus.ACTIVE;
 		this.createdAt = truncated(now);
 		this.updatedAt = this.createdAt;
 	}
 
-	public static User register(EmailAddress email, String passwordHash, String displayName, Instant now) {
-		return new User(email, passwordHash, displayName, UserRole.USER, now);
+	/**
+	 * Creates the account after the phone number was proven by a one-time code
+	 * (FR-ID-01).
+	 */
+	public static User register(PhoneNumber verifiedPhone, String passwordHash, String displayName, Instant now) {
+		User user = new User(passwordHash, displayName, UserRole.USER, now);
+		user.phoneE164 = verifiedPhone.value();
+		user.phoneVerifiedAt = now;
+		return user;
 	}
 
 	public static User administrator(EmailAddress email, String passwordHash, String displayName, Instant now) {
-		User admin = new User(email, passwordHash, displayName, UserRole.ADMIN, now);
-		admin.verifyEmail(now);
+		User admin = new User(passwordHash, displayName, UserRole.ADMIN, now);
+		admin.email = email.value();
+		admin.emailVerifiedAt = now;
 		return admin;
 	}
 
-	public EmailAddress emailAddress() {
-		return EmailAddress.of(email);
+	public Optional<PhoneNumber> phoneNumber() {
+		return Optional.ofNullable(phoneE164).map(PhoneNumber::of);
+	}
+
+	public Optional<EmailAddress> emailAddress() {
+		return Optional.ofNullable(email).map(EmailAddress::of);
+	}
+
+	public Optional<EmailAddress> verifiedEmailAddress() {
+		return hasVerifiedEmail() ? emailAddress() : Optional.empty();
 	}
 
 	public boolean isAdmin() {
 		return role == UserRole.ADMIN;
 	}
 
-	public boolean hasVerifiedEmail() {
-		return emailVerifiedAt != null;
+	public boolean hasVerifiedPhone() {
+		return phoneVerifiedAt != null;
 	}
 
-	public boolean isAwaitingEmailVerification() {
-		return status == AccountStatus.PENDING;
+	public boolean hasVerifiedEmail() {
+		return email != null && emailVerifiedAt != null;
 	}
 
 	public boolean isLocked() {
 		return status.isLocked();
 	}
 
-	public void verifyEmail(Instant now) {
+	/**
+	 * Sets a new, unverified email address. Setting the address already on file changes
+	 * nothing, so a verified address stays verified.
+	 */
+	public void changeEmail(EmailAddress newEmail, Instant now) {
+		if (newEmail.value().equals(email)) {
+			return;
+		}
+		email = newEmail.value();
+		emailVerifiedAt = null;
+		touch(now);
+	}
+
+	/**
+	 * @return true when {@code address} is the address on file and is now verified; false
+	 * when the address changed after the verification link was sent
+	 */
+	public boolean verifyEmail(EmailAddress address, Instant now) {
+		if (!address.value().equals(email)) {
+			return false;
+		}
 		if (emailVerifiedAt == null) {
 			emailVerifiedAt = now;
+			touch(now);
 		}
-		status = status.afterEmailVerified();
-		touch(now);
+		return true;
 	}
 
 	public void ensureCanLogIn() {
@@ -131,6 +169,7 @@ public class User {
 
 	public void changePassword(String newPasswordHash, Instant now) {
 		passwordHash = newPasswordHash;
+		passwordChangedAt = now;
 		touch(now);
 	}
 
@@ -164,29 +203,13 @@ public class User {
 		return previous;
 	}
 
-	public LocationConsent locationConsent() {
-		return new LocationConsent(consentAt, consentTermsVersion, consentWithdrawnAt);
-	}
-
-	public void grantLocationConsent(String termsVersion, Instant now) {
-		consentAt = now;
-		consentTermsVersion = termsVersion;
-		consentWithdrawnAt = null;
-		touch(now);
-	}
-
-	public void withdrawLocationConsent(Instant now) {
-		consentWithdrawnAt = now;
-		touch(now);
-	}
-
 	public void lock(Instant now) {
 		status = status.afterLock();
 		touch(now);
 	}
 
 	public void unlock(Instant now) {
-		status = status.afterUnlock(hasVerifiedEmail());
+		status = status.afterUnlock();
 		touch(now);
 	}
 

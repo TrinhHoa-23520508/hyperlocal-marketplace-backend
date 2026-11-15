@@ -12,9 +12,15 @@ import vn.edu.uit.nearby.nearby_backend.shared.error.ResourceNotFoundException;
 
 public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificationExecutor<User> {
 
+	Optional<User> findByPhoneE164(String phoneE164);
+
+	boolean existsByPhoneE164(String phoneE164);
+
 	Optional<User> findByEmail(String email);
 
 	boolean existsByEmail(String email);
+
+	boolean existsByEmailAndIdNot(String email, UUID excludedUserId);
 
 	default User getRequired(UUID userId) {
 		return findById(userId)

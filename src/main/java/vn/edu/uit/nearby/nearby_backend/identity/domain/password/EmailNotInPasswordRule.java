@@ -9,7 +9,10 @@ public record EmailNotInPasswordRule(int minMatchLength) implements PasswordRule
 
 	@Override
 	public Optional<PasswordViolation> check(PasswordCandidate candidate) {
-		String localPart = candidate.owner().localPart();
+		if (candidate.ownerEmail() == null) {
+			return Optional.empty();
+		}
+		String localPart = candidate.ownerEmail().localPart();
 		if (localPart.length() < minMatchLength || !candidate.password().toLowerCase(Locale.ROOT).contains(localPart)) {
 			return Optional.empty();
 		}

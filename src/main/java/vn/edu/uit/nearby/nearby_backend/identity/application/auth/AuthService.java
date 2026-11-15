@@ -1,12 +1,15 @@
 package vn.edu.uit.nearby.nearby_backend.identity.application.auth;
 
 import vn.edu.uit.nearby.nearby_backend.shared.error.AuthenticationFailedException;
+import vn.edu.uit.nearby.nearby_backend.shared.error.RateLimitExceededException;
 
 public interface AuthService {
 
 	/**
+	 * Logs in with the phone number or a verified email address (FR-ID-03).
 	 * @throws AuthenticationFailedException {@code INVALID_CREDENTIALS} for an unknown
-	 * email or a wrong password, without telling which
+	 * identifier, an unverified email or a wrong password, without telling which
+	 * @throws RateLimitExceededException {@code LOGIN_LOCKED} after too many failures
 	 */
 	TokenPair login(LoginCommand command);
 

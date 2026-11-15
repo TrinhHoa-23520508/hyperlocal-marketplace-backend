@@ -3,8 +3,6 @@ package vn.edu.uit.nearby.nearby_backend.identity.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.time.Instant;
-
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
@@ -14,8 +12,6 @@ import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
 import vn.edu.uit.nearby.nearby_backend.shared.geo.GeoPoint;
 
 class ValueObjectTests {
-
-	private static final Instant NOW = UserFixtures.NOW;
 
 	@Test
 	void emailIsTrimmedAndLowercased() {
@@ -34,9 +30,16 @@ class ValueObjectTests {
 
 	@Test
 	void emailLongerThanTheColumnIsRejected() {
-		String tooLong = "a".repeat(250) + "@example.com";
+		String tooLong = "a".repeat(243) + "@example.com";
 
 		assertThatThrownBy(() -> EmailAddress.of(tooLong)).isInstanceOf(InvalidRequestException.class);
+	}
+
+	@Test
+	void emailAtTheColumnLimitIsAccepted() {
+		String longest = "a".repeat(242) + "@example.com";
+
+		assertThat(EmailAddress.of(longest).value()).hasSize(254);
 	}
 
 	@Test
@@ -58,21 +61,6 @@ class ValueObjectTests {
 		HomeArea area = HomeArea.roundedFrom(new GeoPoint(10.87, 106.8));
 
 		assertThat(HomeArea.from(area.toPoint())).isEqualTo(area);
-	}
-
-	@Test
-	void consentIsActiveOnlyWhenGivenAndNotWithdrawn() {
-		assertThat(new LocationConsent(null, null, null).isActive()).isFalse();
-		assertThat(new LocationConsent(NOW, "1.0", null).isActive()).isTrue();
-		assertThat(new LocationConsent(NOW, "1.0", NOW).isActive()).isFalse();
-	}
-
-	@Test
-	void consentToAnOlderTermsVersionIsNotActiveForTheCurrentOne() {
-		LocationConsent consent = new LocationConsent(NOW, "1.0", null);
-
-		assertThat(consent.isActiveFor("1.0")).isTrue();
-		assertThat(consent.isActiveFor("2.0")).isFalse();
 	}
 
 }
