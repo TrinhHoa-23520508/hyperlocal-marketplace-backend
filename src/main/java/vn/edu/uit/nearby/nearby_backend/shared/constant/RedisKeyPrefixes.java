@@ -26,6 +26,8 @@ public final class RedisKeyPrefixes {
 
 	public static final String OTP_DAILY_QUOTA = "otp-daily:";
 
+	public static final String AREA_DAILY_ATTEMPTS = "area-attempts:";
+
 	private RedisKeyPrefixes() {
 	}
 

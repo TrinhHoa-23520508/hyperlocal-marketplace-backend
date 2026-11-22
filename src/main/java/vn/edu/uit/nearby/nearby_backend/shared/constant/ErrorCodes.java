@@ -24,6 +24,8 @@ public final class ErrorCodes {
 
 	public static final String DUPLICATE_REQUEST = "DUPLICATE_REQUEST";
 
+	public static final String IDEMPOTENCY_CONFLICT = "IDEMPOTENCY_CONFLICT";
+
 	public static final String INVALID_EMAIL = "INVALID_EMAIL";
 
 	public static final String INVALID_PHONE = "INVALID_PHONE";
@@ -99,6 +101,28 @@ public final class ErrorCodes {
 	public static final String CANNOT_BLOCK_SELF = "CANNOT_BLOCK_SELF";
 
 	public static final String CONTACT_NOT_ALLOWED = "CONTACT_NOT_ALLOWED";
+
+	public static final String AREA_VERIFICATION_REJECTED = "AREA_VERIFICATION_REJECTED";
+
+	public static final String AREA_RATE_LIMITED = "AREA_RATE_LIMITED";
+
+	public static final String AREA_LIMIT_REACHED = "AREA_LIMIT_REACHED";
+
+	public static final String AREA_NOT_FOUND = "AREA_NOT_FOUND";
+
+	public static final String AREA_STATUS_CONFLICT = "AREA_STATUS_CONFLICT";
+
+	public static final String OUT_OF_RENEW_RADIUS = "OUT_OF_RENEW_RADIUS";
+
+	public static final String AREA_HAS_OPEN_TRANSACTIONS = "AREA_HAS_OPEN_TRANSACTIONS";
+
+	public static final String INVALID_RANGE = "INVALID_RANGE";
+
+	public static final String OUT_OF_RANGE = "OUT_OF_RANGE";
+
+	public static final String PIN_OUTSIDE_AREA = "PIN_OUTSIDE_AREA";
+
+	public static final String TRADING_GATE_FAILED = "TRADING_GATE_FAILED";
 
 	private ErrorCodes() {
 	}

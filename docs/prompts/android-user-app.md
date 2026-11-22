@@ -1,6 +1,6 @@
 # Prompt: build the Nearby Android app (accounts part)
 
-Read [`README.md`](README.md) first for the context to attach and the workflow. Copy everything below the line into your AI coding tool, together with the business flows F1–F12 of [`docs/api/identity-api.md`](../api/identity-api.md#business-flows-per-screen) and [`docs/api/openapi.yml`](../api/openapi.yml).
+Read [`README.md`](README.md) first for the context to attach and the workflow. Copy everything below the line into your AI coding tool, together with the business flows F1–F12 and F15 (trading gate) of [`docs/api/identity-api.md`](../api/identity-api.md#business-flows-per-screen) and [`docs/api/openapi.yml`](../api/openapi.yml).
 
 ---
 
@@ -53,7 +53,7 @@ Deliver a working, tested app. UI copy is **Vietnamese** with full diacritics; c
   - `violations` (`WEAK_PASSWORD`);
   - `errors[{field, message}]` (`VALIDATION_FAILED`).
 - `429` responses carry `Retry-After` in seconds.
-- The OpenAPI file lists every endpoint, schema and error per endpoint. The flows F1–F12 say when to call what and how each error looks on screen. **Follow the flow tables exactly**; each row is an acceptance test.
+- The OpenAPI file lists every endpoint, schema and error per endpoint. The flows F1–F12 and F15 say when to call what and how each error looks on screen. **Follow the flow tables exactly**; each row is an acceptance test.
 
 ## Session handling (the part that most often goes wrong)
 
@@ -122,7 +122,7 @@ Deep links (declare them in the manifest and route them in Navigation):
 
 ## Acceptance criteria
 
-- Every row of flows F1–F12 behaves as its table says, against the real backend on `10.0.2.2:8080`. Use `SMS_PROVIDER=log` and read the code from the backend log.
+- Every row of flows F1–F12 and F15 behaves as its table says, against the real backend on `10.0.2.2:8080`. Use `SMS_PROVIDER=log` and read the code from the backend log.
 - No token, OTP or password appears in Logcat; the refresh token is only in encrypted storage.
 - Rotating the screen or killing the process keeps the session and the form state (`SavedStateHandle`).
 - Lint passes, all tests pass, and a release build with R8 works (keep rules for kotlinx.serialization models).

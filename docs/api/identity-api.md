@@ -1,6 +1,6 @@
 # Identity API contract (Accounts and Authorization)
 
-This contract covers SRS section 3.1: FR-ID-01 to FR-ID-05, FR-ID-07 to FR-ID-09, FR-ID-11, FR-ID-13 to FR-ID-16 and FR-ID-19. The machine-readable contract is [`openapi.yml`](openapi.yml), generated from the code (`/v3/api-docs.yaml` on a running app); Swagger UI is at `/swagger-ui.html`. Screen-by-screen usage is in [Business flows per screen](#business-flows-per-screen). A Postman collection is in [`docs/postman/`](../postman/).
+This contract covers SRS section 3.1: FR-ID-01 to FR-ID-05, FR-ID-07 to FR-ID-09, FR-ID-11, FR-ID-13 to FR-ID-16, FR-ID-19 and FR-ID-20. The machine-readable contract is [`openapi.yml`](openapi.yml), generated from the code (`/v3/api-docs.yaml` on a running app); Swagger UI is at `/swagger-ui.html`. Screen-by-screen usage is in [Business flows per screen](#business-flows-per-screen). A Postman collection is in [`docs/postman/`](../postman/).
 
 ## Conventions
 
@@ -12,6 +12,7 @@ This contract covers SRS section 3.1: FR-ID-01 to FR-ID-05, FR-ID-07 to FR-ID-09
 | Errors | RFC 9457 `application/problem+json` with a stable `code` field. Validation errors add `errors: [{field, message}]` |
 | Rate limits | `429` (`RATE_LIMITED`, `OTP_RATE_LIMITED` or `LOGIN_LOCKED`) with a `Retry-After` header in seconds |
 | Pagination | Cursor based: `{items, nextCursor, hasMore}`. Pass `nextCursor` back as `cursor` |
+| Idempotency | Commands marked "Idempotency-Key" need the header `Idempotency-Key: <UUID>` (a new UUID per user action, reused only for retries of that action). The same key with the same body within 24 h returns the original response with the header `Idempotent-Replayed: true`, and the command is not run again. The same key with another body: `409 IDEMPOTENCY_CONFLICT`. While the first request is still running: `409 DUPLICATE_REQUEST`. Missing or not a UUID: `400 IDEMPOTENCY_KEY_REQUIRED`. Only `2xx` and `422` responses are kept; after any other error the key is released and can be retried |
 
 Error example:
 
@@ -66,6 +67,7 @@ Error example:
 | 31 | `POST /admin/users/{userId}/lock` | ADMIN | 200 | FR-ID-19 |
 | 32 | `POST /admin/users/{userId}/suspend` | ADMIN | 200 | FR-ID-19 |
 | 33 | `POST /admin/users/{userId}/unlock` | ADMIN | 200 | FR-ID-19 |
+| 34 | `GET /users/me/trading-gate` | USER | 200 | FR-ID-20 |
 
 Every path in the table is relative to `/api/v1`. Every authenticated endpoint can also return `401 UNAUTHENTICATED`, and every endpoint can return `400 VALIDATION_FAILED`. The per-endpoint tables below list only the other errors.
 
@@ -266,6 +268,26 @@ Contacting a user who blocked you (chat, offer) will answer `403 CONTACT_NOT_ALL
 #### F12. Sanction notice (UC-SP-04, A36)
 
 Reached from F1, F3 or F4 on `403 ACCOUNT_SUSPENDED` / `ACCOUNT_BANNED`. Show the `reason`, for a suspension the end `suspendedUntil` in local time with "Đăng nhập lại sau thời điểm này", and the appeal entry (appeals arrive with the moderation module). After `suspendedUntil`, logging in works again (the backend lifts the suspension itself).
+
+#### F15. Trading gate before posting, chatting or making an offer (FR-ID-20, UC-LS-01 / UC-CH-01 / UC-TX-01; A06, A10, A12)
+
+The gate opens only when all four conditions of FR-ID-20 hold: an ACTIVE account, a verified phone, at least one VERIFIED or EXPIRING area, and PRECISE_LOCATION consent. Ask for it before showing the trading screens, so the user sees what is missing instead of an error.
+
+| Step | Screen / action | API | Success | Errors and UI |
+|---|---|---|---|---|
+| 1 | A06 tab "Đăng tin", or A10 buttons "Chat" / "Đề nghị mua" (UC-LS-01 step 1) | `GET /users/me/trading-gate` | `open = true`: continue to A12, A18 or A20. `open = false`: show one call to action per item of `failures` (table below) instead of the action | `401`: run F4 |
+| 2 | The user completes the step (consent, area verification or renewal) | The API of that step | Call step 1 again; it is never cached, so the new state shows at once | -- |
+| 3 | Any trading action that is still refused | (the action's own endpoint) | -- | `403 TRADING_GATE_FAILED` with `reasons` (same values as `failures`): handle as in step 1 |
+
+| `failures` value | Meaning | Call to action |
+|---|---|---|
+| `ACCOUNT_RESTRICTED` | The account is not ACTIVE (suspended, banned, pending deletion) | Show A36 (F12) |
+| `PHONE_NOT_VERIFIED` | No verified phone number | Verify the phone (only accounts without a phone, such as admins) |
+| `NO_VALID_AREA` | No area at all | "Xác minh khu vực" → A27 / A28 (area flows) |
+| `AREA_EXPIRED` | The user has areas, but all are EXPIRED | "Gia hạn khu vực" → A28 for the expired area |
+| `CONSENT_MISSING` | No PRECISE_LOCATION consent for the current terms | Consent dialog (F9 step 1–2) |
+
+Several values can come together; they are listed in FR-ID-20 order. Show them all, or at least the first one.
 
 ### Admin web console
 
@@ -609,6 +631,30 @@ Blocking is silent: the blocked user is never told. Other modules check `identit
 | 400 | `CANNOT_BLOCK_SELF` | The id is the caller's own |
 | 404 | `USER_NOT_FOUND` | Unknown or deleted account |
 
+## 6. Trading gate (`/users/me/trading-gate`)
+
+### 6.1 `GET /users/me/trading-gate`
+
+Returns whether the caller may post listings, open chats and make offers (FR-ID-20), and which conditions are missing. It is computed on every call from the account, the consent and the areas, so it is never stale.
+
+Response `200`:
+
+```json
+{
+  "open": false,
+  "failures": ["AREA_EXPIRED", "CONSENT_MISSING"]
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `open` | boolean | `true` exactly when `failures` is empty |
+| `failures` | array of enum | Any of `ACCOUNT_RESTRICTED`, `PHONE_NOT_VERIFIED`, `NO_VALID_AREA`, `AREA_EXPIRED`, `CONSENT_MISSING`, in that order; empty when open |
+
+Errors: only `401 UNAUTHENTICATED`.
+
+Listing, Chat and Transaction check the same gate on their own endpoints and answer `403 TRADING_GATE_FAILED` with `reasons` holding the same values.
+
 ---
 
 ## 4. Admin: users (`/admin/users`, ADMIN only)
@@ -719,6 +765,14 @@ Lifts a suspension or a ban. Request: `{ "reason": "Appeal accepted" }`. Respons
 These events go through the `event_publication` outbox, so consumers must be idempotent. The Notify consumer (`chat.infrastructure.DeviceTokenCleanup`) exists; the Listing, Transaction and Reputation consumers belong to those modules and are not built yet.
 
 Other modules can also implement `identity.AccountDeletionBlocker` to list obligations that block an account deletion.
+
+Module public API for the trading gate (FR-ID-20):
+
+| Type | Kind | Used by |
+|---|---|---|
+| `identity.TradingGate` (`evaluate`, `requireOpen`) | Facade | Listing (UC-LS-01), Chat (UC-CH-01), Transaction (UC-TX-01) call `requireOpen(userId)`, which throws `403 TRADING_GATE_FAILED` with `reasons` |
+| `identity.TradingAreaStatus` (`standingOf(userId)` → `VALID`, `ONLY_EXPIRED`, `NONE`) | SPI | Implemented by Area Verification. Identity defines it so the two modules don't depend on each other |
+| `identity.AccountStanding` | Facade | Area Verification: an ACTIVE account with a verified phone (FR-AR-01 precondition) |
 
 ## Runtime parameters (`app_parameters`)
 

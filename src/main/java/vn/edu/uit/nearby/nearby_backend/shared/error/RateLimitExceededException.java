@@ -2,6 +2,7 @@ package vn.edu.uit.nearby.nearby_backend.shared.error;
 
 import java.io.Serial;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 
 import org.jspecify.annotations.Nullable;
@@ -24,7 +25,12 @@ public non-sealed class RateLimitExceededException extends BusinessException {
 	}
 
 	public RateLimitExceededException(String code, String message, @Nullable Duration retryAfter) {
-		super(code, message);
+		this(code, message, retryAfter, Map.of());
+	}
+
+	public RateLimitExceededException(String code, String message, @Nullable Duration retryAfter,
+			Map<String, Object> properties) {
+		super(code, message, properties);
 		this.retryAfter = retryAfter;
 	}
 

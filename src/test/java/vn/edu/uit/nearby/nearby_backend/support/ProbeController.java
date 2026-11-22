@@ -1,13 +1,16 @@
 package vn.edu.uit.nearby.nearby_backend.support;
 
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.springframework.boot.test.context.TestComponent;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
@@ -17,12 +20,15 @@ import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.OperationNotAllowedException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.RateLimitExceededException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.ResourceNotFoundException;
+import vn.edu.uit.nearby.nearby_backend.shared.error.UnprocessableRequestException;
 import vn.edu.uit.nearby.nearby_backend.shared.web.idempotency.Idempotent;
 
 @TestComponent
 @RestController
 @RequestMapping("/api/v1/probe")
 public class ProbeController {
+
+	private final AtomicInteger idempotentCalls = new AtomicInteger();
 
 	@GetMapping("/errors/{type}")
 	void throwBusinessError(@PathVariable String type) {
@@ -43,8 +49,29 @@ public class ProbeController {
 
 	@Idempotent
 	@PostMapping("/idempotent")
-	Map<String, String> idempotent() {
-		return Map.of("status", "created");
+	@ResponseStatus(HttpStatus.CREATED)
+	Map<String, Object> idempotent() {
+		return Map.of("call", idempotentCalls.incrementAndGet());
+	}
+
+	@Idempotent
+	@PostMapping("/idempotent-empty")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	void idempotentEmpty() {
+		idempotentCalls.incrementAndGet();
+	}
+
+	@Idempotent
+	@PostMapping("/idempotent-rejected")
+	void idempotentRejected() {
+		throw new UnprocessableRequestException("PROBE_REJECTED", "Rejected call " + idempotentCalls.incrementAndGet());
+	}
+
+	@Idempotent
+	@PostMapping("/idempotent-forbidden")
+	void idempotentForbidden() {
+		throw new OperationNotAllowedException("PROBE_FORBIDDEN",
+				"Forbidden call " + idempotentCalls.incrementAndGet());
 	}
 
 	@Idempotent

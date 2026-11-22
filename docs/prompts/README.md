@@ -4,7 +4,7 @@ Hướng dẫn dùng AI (Claude Code, Cursor, Copilot...) để viết app Andro
 
 | Ứng dụng | Prompt | Luồng nghiệp vụ dùng |
 |---|---|---|
-| Android cho người dùng (Kotlin, Compose) | [`android-user-app.md`](android-user-app.md) | F1–F12 trong [`../api/identity-api.md`](../api/identity-api.md#business-flows-per-screen) |
+| Android cho người dùng (Kotlin, Compose) | [`android-user-app.md`](android-user-app.md) | F1–F12 và F15 (cổng giao dịch) trong [`../api/identity-api.md`](../api/identity-api.md#business-flows-per-screen) |
 | Web admin (React, Vite, TypeScript) | [`admin-web.md`](admin-web.md) | F13–F14 |
 
 SRS không có web cho người dùng: người dùng chỉ dùng app Android. Đừng vibe code web user.

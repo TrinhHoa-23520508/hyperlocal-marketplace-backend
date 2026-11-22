@@ -2011,6 +2011,93 @@
           ]
         }
       ]
+    },
+    {
+      "name": "6. Trading gate",
+      "description": "FR-ID-20, flow F15: ask before posting, chatting or making an offer.",
+      "item": [
+        {
+          "name": "Get trading gate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/me/trading-gate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "me",
+                "trading-gate"
+              ]
+            },
+            "description": "Whether the caller may trade, and which conditions are missing. A user without an area gets NO_VALID_AREA.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const gate = pm.response.json();",
+                  "pm.test(\"open matches failures\", () => pm.expect(gate.open).to.eql(gate.failures.length === 0));",
+                  "pm.test(\"Failures use the FR-ID-20 codes\", () => gate.failures.forEach(f => pm.expect([\"ACCOUNT_RESTRICTED\", \"PHONE_NOT_VERIFIED\", \"NO_VALID_AREA\", \"AREA_EXPIRED\", \"CONSENT_MISSING\"]).to.include(f)));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get trading gate - no token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/me/trading-gate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "me",
+                "trading-gate"
+              ]
+            },
+            "description": "Typical error: the endpoint needs an access token.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"Code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
