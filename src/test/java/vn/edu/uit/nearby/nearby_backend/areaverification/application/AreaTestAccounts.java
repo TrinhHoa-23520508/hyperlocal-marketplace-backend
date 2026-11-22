@@ -15,7 +15,7 @@ import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
  * Accounts for area tests: phone-verified users, with or without PRECISE_LOCATION
  * consent, and an administrator who has no phone.
  */
-class AreaTestAccounts {
+public class AreaTestAccounts {
 
 	private static final String PASSWORD_HASH = "{noop}not-used";
 
@@ -25,19 +25,20 @@ class AreaTestAccounts {
 
 	private final AppParameters appParameters;
 
-	AreaTestAccounts(UserRepository users, LocationConsentService locationConsents, AppParameters appParameters) {
+	public AreaTestAccounts(UserRepository users, LocationConsentService locationConsents,
+			AppParameters appParameters) {
 		this.users = users;
 		this.locationConsents = locationConsents;
 		this.appParameters = appParameters;
 	}
 
-	UUID eligibleUser() {
+	public UUID eligibleUser() {
 		UUID userId = userWithoutConsent();
 		locationConsents.grantConsent(userId, appParameters.get("consent.location_terms_version"));
 		return userId;
 	}
 
-	UUID userWithoutConsent() {
+	public UUID userWithoutConsent() {
 		return users.save(User.register(PhoneNumber.of(randomPhone()), PASSWORD_HASH, "Area Tester", Instant.now()))
 			.getId();
 	}

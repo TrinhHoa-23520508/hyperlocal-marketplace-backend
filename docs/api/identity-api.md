@@ -1,6 +1,13 @@
 # Identity API contract (Accounts and Authorization)
 
-This contract covers SRS section 3.1: FR-ID-01 to FR-ID-05, FR-ID-07 to FR-ID-09, FR-ID-11, FR-ID-13 to FR-ID-16, FR-ID-19 and FR-ID-20. The machine-readable contract is [`openapi.yml`](openapi.yml), generated from the code (`/v3/api-docs.yaml` on a running app); Swagger UI is at `/swagger-ui.html`. Screen-by-screen usage is in [Business flows per screen](#business-flows-per-screen). A Postman collection is in [`docs/postman/`](../postman/).
+This contract covers SRS section 3.1: FR-ID-01 to FR-ID-05, FR-ID-07 to FR-ID-09, FR-ID-11 to FR-ID-16, FR-ID-19 and FR-ID-20 (FR-ID-12 and FR-ID-13 without the reputation, listing and review parts, which come with those modules). The machine-readable contract is [`openapi.yml`](openapi.yml), generated from the code (`/v3/api-docs.yaml` on a running app); Swagger UI is at `/swagger-ui.html`. Screen-by-screen usage is in [Business flows per screen](#business-flows-per-screen). A Postman collection is in [`docs/postman/`](../postman/).
+
+## Breaking changes
+
+| Date | Change | What the app must do |
+|---|---|---|
+| 2026-11-22 | `homeArea` is removed from `GET /users/me`, `PUT /users/me` and every other response; the `users.home_area` and `users.verified_area_count` columns are dropped (migration V13, decision DEC-AR-4). It was an unverified copy of the area, which the SRS does not have. `PUT /users/me` ignores a `homeArea` that is still sent | Stop sending and reading `homeArea`. Read the areas from `areas[]` on `GET /users/me` (FR-ID-12) or from `GET /areas/me`; change them only through the [Area API](area-api.md) |
+| 2026-11-22 | `GET /users/me` adds `areas[]`; `GET /users/{userId}` adds `localityName` | Additive: show them on A31 and A11 |
 
 ## Conventions
 
@@ -206,8 +213,8 @@ sequenceDiagram
 
 | Step | Screen / action | API | Success | Errors and UI |
 |---|---|---|---|---|
-| 1 | A31: open | `GET /users/me` | Show name, avatar, phone with the verified badge, email state. If `displayNameChangeAllowedAt` is present, disable the name field in A32 with "Có thể đổi tên sau {date}" | — |
-| 2 | A32: save name and default area | `PUT /users/me` `{displayName, homeArea}` | Update the cache with the returned profile | `422 NAME_CHANGE_TOO_SOON`: show `nextAllowedAt`. `400 VALIDATION_FAILED` per field. Send the current name unchanged when only the area changes |
+| 1 | A31: open | `GET /users/me` | Show name, avatar, phone with the verified badge, email state, and each of `areas[]` with its `label`, `status` and `expiresAt` (FR-ID-12): `EXPIRING` shows "Sắp hết hạn {date}" with a renew button, `EXPIRED` shows "Đã hết hạn" with a renew button (flow FA2 of the [Area API](area-api.md)); an empty list shows "Xác minh khu vực" (FA1). If `displayNameChangeAllowedAt` is present, disable the name field in A32 with "Có thể đổi tên sau {date}" | — |
+| 2 | A32: save the name | `PUT /users/me` `{displayName}` | Update the cache with the returned profile | `422 NAME_CHANGE_TOO_SOON`: show `nextAllowedAt`. `400 VALIDATION_FAILED` per field. Areas are not edited here: link to A27 ([Area API](area-api.md)) |
 | 3 | A32: pick a photo | `POST /users/me/avatar/upload-url` `{contentType, sizeBytes}` | Keep `objectKey`, `uploadUrl`, `requiredHeaders` | `400 INVALID_IMAGE`: "Chỉ nhận JPEG, PNG, WebP tối đa 5 MB" (check before calling) |
 | 4 | Upload the bytes | `PUT {uploadUrl}` directly to storage, **no bearer token**, every header of `requiredHeaders` exactly | `200` from storage | `403 SignatureDoesNotMatch` (XML): the `Content-Type` differs from `requiredHeaders` or the URL was changed; restart at step 3. URL expired (`expiresAt`): restart at step 3 |
 | 5 | Confirm | `PUT /users/me/avatar` `{objectKey}` | Profile with the new `avatarUrl` | `400 AVATAR_NOT_UPLOADED` / `INVALID_IMAGE` / `INVALID_AVATAR_KEY`: restart at step 3 |
@@ -252,7 +259,7 @@ sequenceDiagram
 
 | Step | Screen / action | API | Success | Errors and UI |
 |---|---|---|---|---|
-| 1 | A11: open someone's profile (also works logged out) | `GET /users/{userId}` | Name, avatar, phone badge, join date. `deleted: true`: show "Người dùng đã xoá", hide contact and block actions | `404 USER_NOT_FOUND` |
+| 1 | A11: open someone's profile (also works logged out) | `GET /users/{userId}` | Name, avatar, phone badge, join date, and `localityName` as the area label when present (never a map or distance). `deleted: true`: show "Người dùng đã xoá", hide contact and block actions | `404 USER_NOT_FOUND` |
 | 2 | A11 / A18: "Chặn" with a confirm dialog | `PUT /users/me/blocks/{userId}` | `204`: hide their listings and chats locally; never tell the other user | `400 CANNOT_BLOCK_SELF` (hide the button on your own profile). `404` |
 | 3 | A33: blocked list | `GET /users/me/blocks?cursor=` | Paged list, "Tải thêm" with `nextCursor` | `400 INVALID_CURSOR`: reload from the start |
 | 4 | "Bỏ chặn" | `DELETE /users/me/blocks/{userId}` | `204`, remove the row | — |
@@ -471,7 +478,7 @@ Request: `{ "password": "..." }`. Response `202`:
 { "status": "PENDING_DELETION", "deleteAfter": "2026-10-25T03:00:00Z" }
 ```
 
-Every session is revoked (`ACCOUNT_DELETION`), push tokens are dropped and `AccountDeletionRequested` is published. Logging in before `deleteAfter` (`account.deletion_grace_days`, 7) cancels the deletion. After it, the daily job anonymises the account: phone, email, home area and avatar are removed, the name becomes "Người dùng đã xoá", the status becomes `DELETED` and `AccountDeleted` is published. The phone number can then register again. Consent records are kept as evidence.
+Every session is revoked (`ACCOUNT_DELETION`), push tokens are dropped and `AccountDeletionRequested` is published. Logging in before `deleteAfter` (`account.deletion_grace_days`, 7) cancels the deletion. After it, the daily job anonymises the account: phone, email and avatar are removed, the name becomes "Người dùng đã xoá", the status becomes `DELETED` and `AccountDeleted` is published. The phone number can then register again. Consent records are kept as evidence.
 
 | Status | Code | When |
 |---|---|---|
@@ -497,7 +504,10 @@ Response `200`:
   "avatarUrl": "https://storage.example.com/nearby-images/avatars/1b0c.../7f3e....jpg?X-Amz-...",
   "role": "USER",
   "status": "ACTIVE",
-  "homeArea": { "latitude": 10.87, "longitude": 106.803 },
+  "areas": [
+    { "id": "5d2a...", "label": "Nhà", "localityName": "Linh Trung", "status": "VERIFIED", "active": true,
+      "expiresAt": "2026-12-22T03:00:00Z" }
+  ],
   "phoneVerified": true,
   "emailVerified": true,
   "createdAt": "2026-10-18T03:00:00Z",
@@ -505,17 +515,19 @@ Response `200`:
 }
 ```
 
-`avatarUrl` is a presigned GET URL that is valid for `MINIO_PRESIGN_TTL`. `displayNameChangeAllowedAt` is set only while the display name cannot be changed yet. When a field has no value (`email`, `avatarUrl`, `homeArea`, `displayNameChangeAllowedAt`), it is left out of the response.
+`avatarUrl` is a presigned GET URL that is valid for `MINIO_PRESIGN_TTL`. `displayNameChangeAllowedAt` is set only while the display name cannot be changed yet. When a field has no value (`email`, `avatarUrl`, `displayNameChangeAllowedAt`, an area's `localityName`), it is left out of the response.
+
+`areas` lists the caller's areas that are not removed, in slot order, with `status` `VERIFIED`, `EXPIRING` or `EXPIRED` and `expiresAt` (FR-ID-12, UC-AC-10). It is an empty list before the first verification and never holds coordinates (NFR-15). The reputation score and tier, published reviews, completed-transaction count and response rate of the trust panel come with the Reputation and Transaction modules; until then the app shows "—" (FR-ID-12 exception).
 
 ### 2.2 `PUT /users/me`
 
 Request:
 
 ```json
-{ "displayName": "An Nguyen", "homeArea": { "latitude": 10.870149, "longitude": 106.803151 } }
+{ "displayName": "An Nguyen" }
 ```
 
-Response `200` with the profile. The display name can change once every `profile.display_name_change_days` (30) days; sending the current name again is not a change, and the first change is always allowed. `homeArea` is the default area. It is optional: leave it out or send `null` to clear it. Latitude must be in [-90, 90] and longitude in [-180, 180]. The point is **rounded to 3 decimals** (about 110 m) before it is stored, so a precise home location is never saved.
+Response `200` with the profile. The display name can change once every `profile.display_name_change_days` (30) days; sending the current name again is not a change, and the first change is always allowed. Areas are changed only through the [Area API](area-api.md); a `homeArea` field is ignored (see [Breaking changes](#breaking-changes)).
 
 | Status | Code | When |
 |---|---|---|
@@ -563,10 +575,10 @@ Response `204`. The image is deleted from storage.
 
 ```json
 { "id": "1b0c...", "displayName": "An Nguyen", "avatarUrl": "https://...", "phoneVerified": true,
-  "joinedAt": "2026-10-18T03:00:00Z", "deleted": false }
+  "joinedAt": "2026-10-18T03:00:00Z", "deleted": false, "localityName": "Linh Trung" }
 ```
 
-Never contains coordinates, phone or email. A deleted account answers `deleted: true` with the name "Người dùng đã xoá" and no avatar. Rank, score, area labels, listings and reviews are added when the Reputation, Area and Listing modules exist. `404 USER_NOT_FOUND` for an unknown id.
+Never contains coordinates, phone or email. A deleted account answers `deleted: true` with the name "Người dùng đã xoá", no avatar and no `localityName`. `localityName` is the area label (FR-ID-13): the public neighborhood name of an area that is `VERIFIED` or `EXPIRING`, the active one first. It is left out when no area is valid or the name is not known yet. Rank, score, listings and reviews are added when the Reputation and Listing modules exist. `404 USER_NOT_FOUND` for an unknown id.
 
 ---
 
@@ -772,6 +784,7 @@ Module public API for the trading gate (FR-ID-20):
 |---|---|---|
 | `identity.TradingGate` (`evaluate`, `requireOpen`) | Facade | Listing (UC-LS-01), Chat (UC-CH-01), Transaction (UC-TX-01) call `requireOpen(userId)`, which throws `403 TRADING_GATE_FAILED` with `reasons` |
 | `identity.TradingAreaStatus` (`standingOf(userId)` → `VALID`, `ONLY_EXPIRED`, `NONE`) | SPI | Implemented by Area Verification. Identity defines it so the two modules don't depend on each other |
+| `identity.ProfileAreas` (`areasOf(userId)` → `ProfileArea` list, `publicLocalityOf(userId)`) | SPI | Implemented by Area Verification for the profile areas (FR-ID-12) and the public area label (FR-ID-13). Without it profiles show no area |
 | `identity.AccountStanding` | Facade | Area Verification: an ACTIVE account with a verified phone (FR-AR-01 precondition) |
 
 ## Runtime parameters (`app_parameters`)

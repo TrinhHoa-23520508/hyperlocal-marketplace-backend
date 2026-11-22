@@ -1,6 +1,6 @@
 # Prompt: build the Nearby Android app (accounts part)
 
-Read [`README.md`](README.md) first for the context to attach and the workflow. Copy everything below the line into your AI coding tool, together with the business flows F1–F12 and F15 (trading gate) of [`docs/api/identity-api.md`](../api/identity-api.md#business-flows-per-screen) and [`docs/api/openapi.yml`](../api/openapi.yml).
+Read [`README.md`](README.md) first for the context to attach and the workflow. Copy everything below the line into your AI coding tool, together with the business flows F1–F12 and F15 (trading gate) of [`docs/api/identity-api.md`](../api/identity-api.md#business-flows-per-screen), the area flows FA1–FA5 of [`docs/api/area-api.md`](../api/area-api.md#business-flows-per-screen) and [`docs/api/openapi.yml`](../api/openapi.yml).
 
 ---
 

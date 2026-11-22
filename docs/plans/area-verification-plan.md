@@ -133,7 +133,7 @@ The time for fix age and speed comes from the injected `Clock`.
 >
 >    Refusals at steps 1–3 are not attempts: nothing is stored and the daily counter is not used.
 > 2. **Two counters:** `area.max_attempts_per_day` counts every evaluated attempt, rejected ones included (FR-AR-06, "đếm cả lần thử bị từ chối"). `area.max_changes_per_30d` counts only *accepted* INITIAL and REPLACEMENT attempts. Counting rejected GPS attempts there would lock a user out for 30 days after three bad fixes. ⚠ Product decision to confirm.
-> 3. **"Per day"** is a rolling 24-hour window starting at the first attempt (the Redis counter), not a calendar day. ⚠ Product decision to confirm.
+> 3. **"Per day"** is a rolling 24-hour window starting at the first attempt (the Redis counter), not a calendar day. ✅ Confirmed by the user on 2026-11-22 (DEC-AR-5).
 > 4. **Failed account precondition:** the SRS has no error code for an account that isn't ACTIVE or has no verified phone when verifying. The service answers `403 ACCESS_DENIED`.
 > 5. **Default label:** the area gets "Khu vực {slot}" until the user names it (UC-AR-01 step 9 asks for the label after verification; the column is NOT NULL).
 > 6. **Removing the active area:** the user's other valid area becomes the active one, so the feed keeps a center.
@@ -221,6 +221,18 @@ PostGIS integration tests (Testcontainers, same image as `compose.yaml`) for `In
 
 ### Phase 5. Web layer (`/api/v1`, USER role; every write needs `Idempotency-Key`)
 
+> **Status: done (2026-11-22).** `areaverification/web/AreaController` serves `GET /areas/me`, `POST /areas/verifications`, `POST /areas/{areaId}/renewals`, `PATCH /areas/{areaId}`, `PUT /areas/active` and `DELETE /areas/{areaId}`. The DTOs are in `web/dto`. `VerificationResponses` turns a rejected outcome into a 422 only after the service has committed the attempt. `RejectionGuidance` holds the Vietnamese guidance FR-AR-05 requires.
+>
+> Tests: `AreaApiIntegrationTests`, 19 cases: 401, 201, replay, `IDEMPOTENCY_CONFLICT`, missing key, `VALIDATION_FAILED`, 422 with guidance, 403 consent, 409 limit, replace, 429 with `Retry-After`, renew 200 and `OUT_OF_RENEW_RADIUS`, 404, list, rename, `INVALID_RANGE`, remove and remove again, optional device signals, and no coordinates in any response. The web layer has 100 % line coverage.
+>
+> **Contract (step 10 of the skill), done in this phase instead of Phase 7:** the skill says an API change isn't done without its contract. Added `docs/api/area-api.md` (scope, conventions, endpoint table, state machine, flows FA1–FA5 with an idempotency sequence diagram, endpoint details, events, public API, jobs). `openapi.yml` was regenerated: +490 lines, nothing removed. Added `docs/postman/nearby-area.postman_collection.json` (16 requests in flow order, valid JSON), and linked the contract from `README.md` and `docs/prompts/*`. Phase 7 is now only the update for Phase 6.
+>
+> Readings of the SRS (SOT) made in this phase:
+> 1. **Paths.** The SRS defines no area paths, so the paths in this plan are used.
+> 2. **422 codes.** A renewal refused only for distance answers `OUT_OF_RENEW_RADIUS` (FR-AR-04) with `distanceMeters`. A hard-rule failure answers `AREA_VERIFICATION_REJECTED` with `reasons`. Both carry `attemptId` and `guidance[{reason, message}]` in Vietnamese ("hướng dẫn tiếng Việt", FR-AR-05).
+> 3. **`rangeLevel` is accepted as a string** so that a wrong value answers `400 INVALID_RANGE` (FR-AR-08) instead of a generic JSON error.
+> 4. **Idempotency-Key** is required only on the two GPS endpoints (SRS 5.4 lists "xác minh/gia hạn khu vực").
+
 | # | Method and path | Success | Requirement / UC |
 |---|---|---|---|
 | 1 | `GET /areas/me` | 200: list of areas with `{id, slot, label, localityName, status, rangeLevel, isActive, verifiedAt, expiresAt, renewable}` | FR-AR-03, FR-AR-08, screen A27 |
@@ -238,6 +250,11 @@ Error mapping: `400 VALIDATION_FAILED` (lat/lng range, accuracy ≥ 0, label 1�
 - Controller tests (MockMvc): status codes and RFC 9457 bodies for bad input, a missing key, another user's area, and a rejected verification.
 
 ### Phase 6. Identity follow-ups enabled by Area
+
+> **Status: done (2026-11-22).** SRS read: FR-ID-12 and FR-ID-13 (`ch3_features.tex`), `user_areas.locality_name` (`ch4_dd.tex`), schema delta row `users` (`ch4_tail.tex`: `home_area`, `verified_area_count` "not applied").
+> - The SPI is named `ProfileAreas` (`areasOf`, `publicLocalityOf`) with the record `ProfileArea` (id, label, localityName, status, active, expiresAt), implemented by `AreaProfileSummaries`. Own profile: areas that are not removed, in slot order, including EXPIRED, since FR-ID-12 asks for each area's status and expiry.
+> - Public label: the `locality_name` of a VERIFIED or EXPIRING area, the active one first; never the private `label`, never for a deleted account. It stays null until the source of `locality_name` is decided (open question).
+> - `V13__drop_home_area.sql`; `HomeArea`, `HomeAreaPayload` and `User.homeArea` removed; `PUT /users/me` ignores a `homeArea` still sent. "Breaking changes" section added to `identity-api.md`; Postman identity updated.
 
 1. `GET /users/me` adds `areas[]`, which completes the area part of FR-ID-12. `GET /users/{id}` adds the active area's `localityName` only (FR-ID-13). To avoid a cycle, identity defines the SPI `ProfileAreaSummaries` and areaverification implements it, the same pattern as D1.
 2. Remove `home_area`, `verified_area_count` and `HomeArea`/`homeArea` (D4). Migration `V13__drop_home_area.sql`. Add a **"Breaking changes"** section at the top of `identity-api.md` and to the final report.

@@ -8,7 +8,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
-import org.locationtech.jts.geom.Point;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -84,10 +83,6 @@ public class User {
 
 	@Column(name = "anonymised_at")
 	private @Nullable Instant anonymisedAt;
-
-	@Getter(AccessLevel.NONE)
-	@Column(name = "home_area", columnDefinition = "geography(Point,4326)")
-	private @Nullable Point homeArea;
 
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
@@ -216,15 +211,6 @@ public class User {
 		return Optional.ofNullable(displayNameChangedAt).map(changedAt -> changedAt.plus(minimumInterval));
 	}
 
-	public void moveHomeArea(@Nullable HomeArea newHomeArea, Instant now) {
-		homeArea = newHomeArea == null ? null : newHomeArea.toPoint();
-		touch(now);
-	}
-
-	public Optional<HomeArea> homeArea() {
-		return Optional.ofNullable(homeArea).map(HomeArea::from);
-	}
-
 	/**
 	 * @return the key of the avatar that was replaced, so the caller can delete it
 	 */
@@ -310,7 +296,6 @@ public class User {
 		passwordHash = unusablePasswordHash;
 		displayName = DELETED_DISPLAY_NAME;
 		avatarKey = null;
-		homeArea = null;
 		anonymisedAt = now;
 		touch(now);
 		return previousAvatar;

@@ -12,7 +12,6 @@ import org.junit.jupiter.api.Test;
 import vn.edu.uit.nearby.nearby_backend.shared.error.BusinessException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.ConflictException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.UnprocessableRequestException;
-import vn.edu.uit.nearby.nearby_backend.shared.geo.GeoPoint;
 
 class UserTests {
 
@@ -190,7 +189,6 @@ class UserTests {
 	void anonymisationRemovesEveryPersonalField() {
 		User user = UserFixtures.userWithVerifiedEmail();
 		user.replaceAvatar("avatars/a.jpg", NOW);
-		user.moveHomeArea(HomeArea.roundedFrom(new GeoPoint(10.87, 106.8)), NOW);
 		user.requestDeletion(NOW);
 
 		assertThat(user.anonymise("unusable", LATER)).contains("avatars/a.jpg");
@@ -204,7 +202,6 @@ class UserTests {
 		assertThat(user.getPasswordHash()).isEqualTo("unusable");
 		assertThat(user.getDisplayName()).isEqualTo(User.DELETED_DISPLAY_NAME);
 		assertThat(user.getAvatarKey()).isNull();
-		assertThat(user.homeArea()).isEmpty();
 		assertThat(user.getAnonymisedAt()).isEqualTo(LATER);
 	}
 
@@ -271,18 +268,6 @@ class UserTests {
 		user.rename("Binh", RENAME_INTERVAL, LATER);
 
 		assertThat(user.getDisplayNameChangedAt()).isEqualTo(NOW);
-	}
-
-	@Test
-	void homeAreaCanBeSetAndCleared() {
-		User user = UserFixtures.activeUser();
-		HomeArea homeArea = HomeArea.roundedFrom(new GeoPoint(10.8701, 106.8031));
-
-		user.moveHomeArea(homeArea, NOW);
-		assertThat(user.homeArea()).contains(homeArea);
-		user.moveHomeArea(null, LATER);
-
-		assertThat(user.homeArea()).isEmpty();
 	}
 
 	@Test

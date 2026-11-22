@@ -84,16 +84,10 @@ class ProfileApiIntegrationTests {
 	}
 
 	@Test
-	void updatedHomeAreaIsStoredRounded() throws Exception {
+	void updatedNameIsTrimmed() throws Exception {
 		updateProfile("""
-				{"displayName":"  Binh Tran ","homeArea":{"latitude":10.870149,"longitude":106.803151}}""")
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.displayName").value("Binh Tran"))
-			.andExpect(jsonPath("$.homeArea.latitude").value(10.87))
-			.andExpect(jsonPath("$.homeArea.longitude").value(106.803));
-
-		mvc.perform(get(ME).header(HttpHeaders.AUTHORIZATION, bearer))
-			.andExpect(jsonPath("$.homeArea.longitude").value(106.803));
+				{"displayName":"  Binh Tran "}""").andExpect(status().isOk())
+			.andExpect(jsonPath("$.displayName").value("Binh Tran"));
 	}
 
 	@Test
@@ -107,23 +101,15 @@ class ProfileApiIntegrationTests {
 			.andExpect(jsonPath("$.code").value("NAME_CHANGE_TOO_SOON"))
 			.andExpect(jsonPath("$.nextAllowedAt").isNotEmpty());
 		updateProfile("""
-				{"displayName":"Binh","homeArea":{"latitude":10.87,"longitude":106.8}}""").andExpect(status().isOk());
+				{"displayName":"Binh"}""").andExpect(status().isOk());
 	}
 
 	@Test
-	void omittingTheHomeAreaClearsIt() throws Exception {
+	void removedHomeAreaFieldIsIgnoredAndNeverReturned() throws Exception {
 		updateProfile("""
-				{"displayName":"An","homeArea":{"latitude":10.87,"longitude":106.8}}""");
-
-		updateProfile("""
-				{"displayName":"An"}""").andExpect(status().isOk()).andExpect(jsonPath("$.homeArea").doesNotExist());
-	}
-
-	@Test
-	void outOfRangeCoordinatesAreAValidationError() throws Exception {
-		updateProfile("""
-				{"displayName":"An","homeArea":{"latitude":91,"longitude":106.8}}""").andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.errors[0].field").value("homeArea.latitude"));
+				{"displayName":"An","homeArea":{"latitude":10.87,"longitude":106.8}}""").andExpect(status().isOk())
+			.andExpect(jsonPath("$.homeArea").doesNotExist())
+			.andExpect(jsonPath("$.areas").isEmpty());
 	}
 
 	@Test

@@ -850,10 +850,10 @@
                 "me"
               ]
             },
-            "description": "Display name 2-30 characters, changeable once every 30 days (422 NAME_CHANGE_TOO_SOON with nextAllowedAt). homeArea is rounded to 3 decimals.",
+            "description": "Display name 2-30 characters, changeable once every 30 days (422 NAME_CHANGE_TOO_SOON with nextAllowedAt). Areas are not edited here (Area API); the old homeArea field is gone.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"displayName\": \"An Nguyen\",\n  \"homeArea\": {\n    \"latitude\": 10.870149,\n    \"longitude\": 106.803151\n  }\n}",
+              "raw": "{\n  \"displayName\": \"An Nguyen\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -878,7 +878,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"Area is rounded\", () => pm.expect(pm.response.json().homeArea.latitude).to.eql(10.87));"
+                  "pm.test(\"Areas listed, no homeArea\", () => { const body = pm.response.json(); pm.expect(body.areas).to.be.an(\"array\"); pm.expect(body).to.not.have.property(\"homeArea\"); });"
                 ]
               }
             }

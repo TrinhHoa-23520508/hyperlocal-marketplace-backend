@@ -2,6 +2,7 @@ package vn.edu.uit.nearby.nearby_backend.identity.application.profile;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -12,9 +13,10 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import vn.edu.uit.nearby.nearby_backend.identity.ProfileArea;
+import vn.edu.uit.nearby.nearby_backend.identity.ProfileAreas;
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityParameters;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
-import vn.edu.uit.nearby.nearby_backend.identity.domain.HomeArea;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.ImageUploadPolicy;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.PhoneNumber;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
@@ -22,7 +24,6 @@ import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.constant.ErrorCodes;
 import vn.edu.uit.nearby.nearby_backend.shared.constant.StorageKeyPrefixes;
 import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
-import vn.edu.uit.nearby.nearby_backend.shared.geo.GeoPoint;
 import vn.edu.uit.nearby.nearby_backend.shared.storage.ImageStorage;
 import vn.edu.uit.nearby.nearby_backend.shared.storage.ImageStorage.PresignedUrl;
 import vn.edu.uit.nearby.nearby_backend.shared.storage.ImageStorage.StoredObject;
@@ -42,13 +43,16 @@ public class ProfileServiceImpl implements ProfileService {
 
 	private final Clock clock;
 
+	private final List<ProfileAreas> profileAreas;
+
 	public ProfileServiceImpl(UserRepository users, ImageStorage storage, IdentityParameters parameters,
-			ApplicationEventPublisher events, Clock clock) {
+			ApplicationEventPublisher events, Clock clock, List<ProfileAreas> profileAreas) {
 		this.users = users;
 		this.storage = storage;
 		this.parameters = parameters;
 		this.events = events;
 		this.clock = clock;
+		this.profileAreas = List.copyOf(profileAreas);
 	}
 
 	@Override
@@ -61,9 +65,7 @@ public class ProfileServiceImpl implements ProfileService {
 	@Transactional
 	public UserProfile updateProfile(UUID userId, UpdateProfileCommand command) {
 		User user = users.getRequired(userId);
-		Instant now = clock.instant();
-		user.rename(command.displayName().trim(), parameters.displayNameChangeInterval(), now);
-		user.moveHomeArea(command.homeArea() == null ? null : HomeArea.roundedFrom(command.homeArea()), now);
+		user.rename(command.displayName().trim(), parameters.displayNameChangeInterval(), clock.instant());
 		return toProfile(user);
 	}
 
@@ -72,7 +74,7 @@ public class ProfileServiceImpl implements ProfileService {
 	public PublicProfile getPublicProfile(UUID userId) {
 		User user = users.getRequired(userId);
 		return new PublicProfile(user.getId(), user.getDisplayName(), avatarUrlOf(user), user.hasVerifiedPhone(),
-				user.getCreatedAt(), user.isDeleted());
+				user.getCreatedAt(), user.isDeleted(), publicLocalityOf(user));
 	}
 
 	@Override
@@ -133,11 +135,21 @@ public class ProfileServiceImpl implements ProfileService {
 	}
 
 	private UserProfile toProfile(User user) {
-		GeoPoint homeArea = user.homeArea().map(HomeArea::center).orElse(null);
 		return new UserProfile(user.getId(), user.phoneNumber().map(PhoneNumber::value).orElse(null),
 				user.emailAddress().map(EmailAddress::value).orElse(null), user.getDisplayName(), avatarUrlOf(user),
-				user.getRole(), user.getStatus(), homeArea, user.hasVerifiedPhone(), user.hasVerifiedEmail(),
+				user.getRole(), user.getStatus(), areasOf(user), user.hasVerifiedPhone(), user.hasVerifiedEmail(),
 				user.getCreatedAt(), nextRenameAllowedAt(user));
+	}
+
+	private List<ProfileArea> areasOf(User user) {
+		return profileAreas.stream().findFirst().map(areas -> areas.areasOf(user.getId())).orElse(List.of());
+	}
+
+	private @Nullable String publicLocalityOf(User user) {
+		if (user.isDeleted()) {
+			return null;
+		}
+		return profileAreas.stream().findFirst().flatMap(areas -> areas.publicLocalityOf(user.getId())).orElse(null);
 	}
 
 	private @Nullable Instant nextRenameAllowedAt(User user) {

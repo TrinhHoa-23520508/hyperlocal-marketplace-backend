@@ -14,6 +14,8 @@ public final class ApiPaths {
 
 	public static final String CURRENT_USER_PATTERN = CURRENT_USER_BASE + "/**";
 
+	public static final String AREAS_BASE = API_V1 + "/areas";
+
 	public static final String USERS_BASE = API_V1 + "/users";
 
 	public static final String PUBLIC_PROFILE = USERS_BASE + "/{userId}";

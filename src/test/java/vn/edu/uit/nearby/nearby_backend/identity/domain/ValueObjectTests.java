@@ -9,7 +9,6 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
-import vn.edu.uit.nearby.nearby_backend.shared.geo.GeoPoint;
 
 class ValueObjectTests {
 
@@ -40,27 +39,6 @@ class ValueObjectTests {
 		String longest = "a".repeat(242) + "@example.com";
 
 		assertThat(EmailAddress.of(longest).value()).hasSize(254);
-	}
-
-	@Test
-	void homeAreaIsRoundedToThreeDecimals() {
-		HomeArea area = HomeArea.roundedFrom(new GeoPoint(10.870149, 106.803151));
-
-		assertThat(area.center()).isEqualTo(new GeoPoint(10.870, 106.803));
-	}
-
-	@Test
-	void homeAreaRoundsHalfUp() {
-		HomeArea area = HomeArea.roundedFrom(new GeoPoint(10.0005, -106.0005));
-
-		assertThat(area.center()).isEqualTo(new GeoPoint(10.001, -106.001));
-	}
-
-	@Test
-	void homeAreaSurvivesTheConversionToAPointAndBack() {
-		HomeArea area = HomeArea.roundedFrom(new GeoPoint(10.87, 106.8));
-
-		assertThat(HomeArea.from(area.toPoint())).isEqualTo(area);
 	}
 
 }

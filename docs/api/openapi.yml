@@ -20,6 +20,8 @@ tags:
   description: The current user's profile and avatar (FR-ID-03)
 - name: Account security
   description: "The current user's password, optional email address and account deletion"
+- name: Areas
+  description: "GPS-verified activity areas (FR-AR-01..09; screens A27, A28)"
 - name: Trading gate
   description: "Conditions to post listings, chat and make offers (FR-ID-20)"
 - name: Blocks
@@ -370,6 +372,44 @@ paths:
       responses:
         "204":
           description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/areas/active:
+    put:
+      tags:
+      - Areas
+      summary: Choose the area that drives the feed and its range (UC-AR-04)
+      operationId: selectActive
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SelectActiveAreaRequest"
+        required: true
+      responses:
+        "400":
+          description: "INVALID_RANGE: rangeLevel is not NEAR, MEDIUM or FAR | VALIDATION_FAILED:\
+            \ errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: "AREA_NOT_FOUND: not one of the caller's areas"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "AREA_STATUS_CONFLICT: only a VERIFIED or EXPIRING area"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "401":
           description: "UNAUTHENTICATED: missing or expired token"
           content:
@@ -736,6 +776,164 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
       security: []
+  /api/v1/areas/{areaId}/renewals:
+    post:
+      tags:
+      - Areas
+      summary: Renew an area with a fresh GPS fix within 1 500 m of its center (UC-AR-02)
+      operationId: renew
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        description: UUID; resending the same key and body returns the stored response
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenewAreaRequest"
+        required: true
+      responses:
+        "403":
+          description: "LOCATION_CONSENT_REQUIRED | ACCESS_DENIED: the account is\
+            \ not ACTIVE or has no verified phone"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: "AREA_NOT_FOUND: not one of the caller's areas"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "AREA_STATUS_CONFLICT: the area was removed | IDEMPOTENCY_CONFLICT\
+            \ | DUPLICATE_REQUEST"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: "OUT_OF_RENEW_RADIUS: farther than 1 500 m; distanceMeters\
+            \ rounded to 100 m | AREA_VERIFICATION_REJECTED: hard rule broken; reasons\
+            \ with guidance"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: "AREA_RATE_LIMITED: reason DAILY_ATTEMPTS; Retry-After header"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/areas/verifications:
+    post:
+      tags:
+      - Areas
+      summary: "Verify a new area, or replace one, with a fresh GPS fix (UC-AR-01,\
+        \ UC-AR-03)"
+      description: "201 creates an area. 200 means the fix was within 1 500 m of an\
+        \ existing area, which was renewed instead (UC-AR-01 A4)."
+      operationId: verify
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        description: UUID; resending the same key and body returns the stored response
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyAreaRequest"
+        required: true
+      responses:
+        "201":
+          description: A new area was verified
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/AreaVerificationResponse"
+        "200":
+          description: An existing area was renewed instead
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/AreaVerificationResponse"
+        "403":
+          description: "LOCATION_CONSENT_REQUIRED: no PRECISE_LOCATION consent | ACCESS_DENIED:\
+            \ the account is not ACTIVE or has no verified phone"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: "AREA_NOT_FOUND: replaceAreaId is not one of the caller's areas"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "AREA_LIMIT_REACHED: already 2 areas; areaIds lists them for\
+            \ UC-AR-03 | AREA_HAS_OPEN_TRANSACTIONS: the replaced area's listings\
+            \ have open transactions | AREA_STATUS_CONFLICT: the replaced area was\
+            \ removed | IDEMPOTENCY_CONFLICT | DUPLICATE_REQUEST"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: "AREA_VERIFICATION_REJECTED: reasons MOCK_LOCATION, LOW_ACCURACY,\
+            \ STALE_FIX, IMPOSSIBLE_SPEED with guidance | OUT_OF_RENEW_RADIUS: when\
+            \ renewing a nearby area"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: "AREA_RATE_LIMITED: reason DAILY_ATTEMPTS (5 a day) or AREA_CHANGES\
+            \ (3 per 30 days); Retry-After header"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /api/v1/admin/users/{userId}/unlock:
     post:
       tags:
@@ -914,6 +1112,84 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /api/v1/areas/{areaId}:
+    delete:
+      tags:
+      - Areas
+      summary: "Remove an area; its listings are hidden (UC-AR-03, FR-AR-07)"
+      operationId: remove
+      parameters:
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "404":
+          description: "AREA_NOT_FOUND: not one of the caller's areas"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "AREA_HAS_OPEN_TRANSACTIONS: listingIds have open transactions\
+            \ | AREA_STATUS_CONFLICT: already removed"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    patch:
+      tags:
+      - Areas
+      summary: Name an area (UC-AR-01 step 9)
+      operationId: rename
+      parameters:
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameAreaRequest"
+        required: true
+      responses:
+        "404":
+          description: "AREA_NOT_FOUND: not one of the caller's areas"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "AREA_STATUS_CONFLICT: the area was removed"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /api/v1/users/{userId}:
     get:
       tags:
@@ -1001,6 +1277,27 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/areas/me:
+    get:
+      tags:
+      - Areas
+      summary: The caller's areas in slot order (A27)
+      operationId: listMyAreas
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AreaResponse"
         "401":
           description: "UNAUTHENTICATED: missing or expired token"
           content:
@@ -1128,22 +1425,6 @@ paths:
                 $ref: "#/components/schemas/Problem"
 components:
   schemas:
-    HomeAreaPayload:
-      type: object
-      properties:
-        latitude:
-          type: number
-          format: double
-          maximum: 90
-          minimum: -90
-        longitude:
-          type: number
-          format: double
-          maximum: 180
-          minimum: -180
-      required:
-      - latitude
-      - longitude
     UpdateProfileRequest:
       type: object
       properties:
@@ -1153,12 +1434,31 @@ components:
           example: An Nguyen
           maxLength: 30
           minLength: 2
-        homeArea:
-          type: "null"
-          $ref: "#/components/schemas/HomeAreaPayload"
-          description: "Default area, rounded to 3 decimals; null clears it"
       required:
       - displayName
+    ProfileAreaResponse:
+      type: object
+      description: One of the caller's areas (FR-ID-12). It never carries coordinates
+        (NFR-15)
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+          example: Nhà
+        localityName:
+          type: string
+          description: Public neighborhood name; null until known
+        status:
+          type: string
+          description: VERIFIED | EXPIRING | EXPIRED; EXPIRED needs renewal
+        active:
+          type: boolean
+          description: Drives the feed (FR-AR-08)
+        expiresAt:
+          type: string
+          format: date-time
     ProfileResponse:
       type: object
       properties:
@@ -1186,8 +1486,12 @@ components:
           - BANNED
           - PENDING_DELETION
           - DELETED
-        homeArea:
-          $ref: "#/components/schemas/HomeAreaPayload"
+        areas:
+          type: array
+          description: "Areas that are not removed, in slot order; empty before the\
+            \ first verification"
+          items:
+            $ref: "#/components/schemas/ProfileAreaResponse"
         phoneVerified:
           type: boolean
         emailVerified:
@@ -1284,6 +1588,65 @@ components:
           minLength: 0
       required:
       - objectKey
+    SelectActiveAreaRequest:
+      type: object
+      properties:
+        areaId:
+          type: string
+          format: uuid
+        rangeLevel:
+          type: string
+          description: "NEAR 2 km, MEDIUM 4 km or FAR 6 km"
+          enum:
+          - NEAR
+          - MEDIUM
+          - FAR
+          example: MEDIUM
+          minLength: 1
+      required:
+      - areaId
+      - rangeLevel
+    AreaResponse:
+      type: object
+      description: An area of the caller. It never carries coordinates (NFR-15)
+      properties:
+        id:
+          type: string
+          format: uuid
+        slot:
+          type: integer
+          format: int32
+          description: 1 or 2
+        label:
+          type: string
+          example: Nhà
+        localityName:
+          type: string
+          description: Public neighborhood name; null until known
+        status:
+          type: string
+          description: VERIFIED and EXPIRING unlock trading; EXPIRED needs renewal
+          enum:
+          - VERIFIED
+          - EXPIRING
+          - EXPIRED
+          - REMOVED
+        rangeLevel:
+          type: string
+          enum:
+          - NEAR
+          - MEDIUM
+          - FAR
+        active:
+          type: boolean
+          description: Drives the feed (FR-AR-08)
+        verifiedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: verifiedAt + 30 days
     AvatarUploadUrlRequest:
       type: object
       properties:
@@ -1549,6 +1912,130 @@ components:
           minLength: 0
       required:
       - token
+    DeviceSignalsPayload:
+      type: object
+      description: Device signals read by the app. Send null for a signal that could
+        not be read; signals are stored for moderators and never reject the verification
+        (FR-AR-05)
+      properties:
+        emulator:
+          type: boolean
+          description: Running on an emulator
+        rooted:
+          type: boolean
+          description: The device is rooted
+        developerOptions:
+          type: boolean
+          description: Developer options are on
+        mockLocationApp:
+          type: boolean
+          description: A mock-location app is installed
+    RenewAreaRequest:
+      type: object
+      properties:
+        latitude:
+          type: number
+          format: double
+          example: 10.87
+          maximum: 90
+          minimum: -90
+        longitude:
+          type: number
+          format: double
+          example: 106.8031
+          maximum: 180
+          minimum: -180
+        accuracyMeters:
+          type: number
+          format: double
+          description: "Horizontal accuracy reported by the OS, in meters; over 100\
+            \ is rejected"
+          example: 12.5
+          minimum: 0
+        fixTime:
+          type: string
+          format: date-time
+          description: When the GPS fix was taken; older than 120 s is rejected
+          example: 2026-11-22T02:00:00Z
+        mockLocation:
+          type: boolean
+          description: The OS mock-location flag; true is rejected
+        deviceSignals:
+          $ref: "#/components/schemas/DeviceSignalsPayload"
+        appVersion:
+          type: string
+          example: 1.0.0
+          maxLength: 20
+          minLength: 0
+      required:
+      - accuracyMeters
+      - fixTime
+      - latitude
+      - longitude
+      - mockLocation
+    AreaVerificationResponse:
+      type: object
+      properties:
+        area:
+          $ref: "#/components/schemas/AreaResponse"
+        renewal:
+          type: boolean
+          description: True when an existing area was renewed instead of a new one
+            created (the fix was within 1 500 m of it)
+    VerifyAreaRequest:
+      type: object
+      properties:
+        latitude:
+          type: number
+          format: double
+          example: 10.87
+          maximum: 90
+          minimum: -90
+        longitude:
+          type: number
+          format: double
+          example: 106.8031
+          maximum: 180
+          minimum: -180
+        accuracyMeters:
+          type: number
+          format: double
+          description: "Horizontal accuracy reported by the OS, in meters; over 100\
+            \ is rejected"
+          example: 12.5
+          minimum: 0
+        fixTime:
+          type: string
+          format: date-time
+          description: When the GPS fix was taken; older than 120 s is rejected
+          example: 2026-11-22T02:00:00Z
+        mockLocation:
+          type: boolean
+          description: The OS mock-location flag; true is rejected
+        deviceSignals:
+          $ref: "#/components/schemas/DeviceSignalsPayload"
+        appVersion:
+          type: string
+          example: 1.0.0
+          maxLength: 20
+          minLength: 0
+        label:
+          type: string
+          description: "The user's name for the area; \"Khu vực {slot}\" when absent"
+          example: Nhà
+          maxLength: 30
+          minLength: 0
+          pattern: .*\S.*
+        replaceAreaId:
+          type: string
+          format: uuid
+          description: Replace this area of the user instead of adding one (UC-AR-03)
+      required:
+      - accuracyMeters
+      - fixTime
+      - latitude
+      - longitude
+      - mockLocation
     UnlockUserRequest:
       type: object
       properties:
@@ -1628,6 +2115,16 @@ components:
           minLength: 0
       required:
       - reason
+    RenameAreaRequest:
+      type: object
+      properties:
+        label:
+          type: string
+          example: Công ty
+          maxLength: 30
+          minLength: 0
+      required:
+      - label
     PublicProfileResponse:
       type: object
       properties:
@@ -1645,6 +2142,11 @@ components:
           format: date-time
         deleted:
           type: boolean
+        localityName:
+          type: string
+          description: "Area label: the public neighborhood name, never a coordinate\
+            \ (FR-ID-13); null when unknown, when no area is valid, or for a deleted\
+            \ account"
     TradingGateResponse:
       type: object
       properties:
@@ -1731,9 +2233,6 @@ components:
         \ (ACCOUNT_SUSPENDED / ACCOUNT_BANNED), nextAllowedAt (NAME_CHANGE_TOO_SOON),\
         \ blockers (ACCOUNT_DELETION_BLOCKED)."
       properties:
-        type:
-          type: string
-          example: https://nearby.uit.edu.vn/problems/otp-invalid
         title:
           type: string
           example: Unprocessable Content
@@ -1762,6 +2261,9 @@ components:
           type: integer
           format: int32
           example: 422
+        type:
+          type: string
+          example: https://nearby.uit.edu.vn/problems/otp-invalid
       required:
       - code
       - status
