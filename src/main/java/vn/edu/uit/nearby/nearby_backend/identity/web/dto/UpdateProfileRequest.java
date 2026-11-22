@@ -1,20 +1,15 @@
 package vn.edu.uit.nearby.nearby_backend.identity.web.dto;
 
-import org.jspecify.annotations.Nullable;
-
-import jakarta.validation.Valid;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import vn.edu.uit.nearby.nearby_backend.identity.application.profile.UpdateProfileCommand;
 
-/**
- * @param homeArea omitted or null clears the default area
- */
-public record UpdateProfileRequest(@NotBlank @Size(min = 2, max = 60) String displayName,
-		@Valid @Nullable HomeAreaPayload homeArea) {
+public record UpdateProfileRequest(@Schema(description = "2-30 characters, trimmed; changeable once every 30 days",
+		example = "An Nguyen") @NotBlank @Size(min = 2, max = 30) String displayName) {
 
 	public UpdateProfileCommand toCommand() {
-		return new UpdateProfileCommand(displayName, homeArea == null ? null : homeArea.toGeoPoint());
+		return new UpdateProfileCommand(displayName);
 	}
 
 }

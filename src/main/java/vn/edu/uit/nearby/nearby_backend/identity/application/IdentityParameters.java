@@ -41,6 +41,12 @@ public class IdentityParameters {
 
 	private static final String IMAGE_MAX_BYTES = "image.max_bytes";
 
+	private static final String LOGIN_MAX_FAILED_PER_IP = "auth.login_max_failed_per_ip";
+
+	private static final String ACCOUNT_DELETION_GRACE_DAYS = "account.deletion_grace_days";
+
+	private static final String DISPLAY_NAME_CHANGE_DAYS = "profile.display_name_change_days";
+
 	private final AppParameters parameters;
 
 	public IdentityParameters(AppParameters parameters) {
@@ -49,6 +55,10 @@ public class IdentityParameters {
 
 	public int loginMaxFailedAttempts() {
 		return parameters.getInt(LOGIN_MAX_FAILED_ATTEMPTS);
+	}
+
+	public int loginMaxFailedAttemptsPerIp() {
+		return parameters.getInt(LOGIN_MAX_FAILED_PER_IP);
 	}
 
 	public Duration loginLockoutWindow() {
@@ -91,6 +101,14 @@ public class IdentityParameters {
 
 	public long imageMaxBytes() {
 		return parameters.getInt(IMAGE_MAX_BYTES);
+	}
+
+	public Duration accountDeletionGrace() {
+		return Duration.ofDays(parameters.getInt(ACCOUNT_DELETION_GRACE_DAYS));
+	}
+
+	public Duration displayNameChangeInterval() {
+		return Duration.ofDays(parameters.getInt(DISPLAY_NAME_CHANGE_DAYS));
 	}
 
 }

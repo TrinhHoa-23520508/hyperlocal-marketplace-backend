@@ -1,0 +1,2274 @@
+openapi: 3.1.0
+info:
+  title: Nearby API
+  description: "Hyperlocal second-hand marketplace. Errors follow RFC 9457 (application/problem+json)\
+    \ with a stable `code`; lists use cursor-based pagination; state-changing calls\
+    \ accept an Idempotency-Key header. Business flows per screen: docs/api/<module>-api.md."
+  version: v1
+servers:
+- url: http://localhost:8080
+  description: Generated server url
+security:
+- bearerAuth: []
+tags:
+- name: Authentication
+  description: "Phone registration with SMS codes, login, tokens, password reset and\
+    \ email verification"
+- name: Consents
+  description: Consent per purpose and marketing pushes (FR-ID-15)
+- name: Profile
+  description: The current user's profile and avatar (FR-ID-03)
+- name: Account security
+  description: "The current user's password, optional email address and account deletion"
+- name: Areas
+  description: "GPS-verified activity areas (FR-AR-01..09; screens A27, A28)"
+- name: Trading gate
+  description: "Conditions to post listings, chat and make offers (FR-ID-20)"
+- name: Blocks
+  description: Block and unblock other users (FR-ID-14)
+- name: "Admin: users"
+  description: "Find accounts, suspend, ban and lift sanctions (FR-ID-19, UC-AD-04)"
+- name: Public profiles
+  description: What anyone can see about a user (FR-ID-13)
+- name: Location consent
+  description: Consent to location data processing (FR-ID-06)
+paths:
+  /api/v1/users/me:
+    get:
+      tags:
+      - Profile
+      summary: Get the current user's profile
+      operationId: getProfile
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    put:
+      tags:
+      - Profile
+      summary: Update display name and default area; the area is rounded before it
+        is stored
+      operationId: updateProfile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+        required: true
+      responses:
+        "422":
+          description: "NAME_CHANGE_TOO_SOON: nextAllowedAt says when the name can\
+            \ change again"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+      - Account security
+      summary: "Delete the account: anonymised after the grace period unless the user\
+        \ logs in again (FR-ID-16)"
+      operationId: deleteAccount
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteAccountRequest"
+        required: true
+      responses:
+        "400":
+          description: "CURRENT_PASSWORD_INVALID | VALIDATION_FAILED: errors lists\
+            \ each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: CANNOT_DELETE_ADMIN
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: ACCOUNT_DELETION_BLOCKED (blockers lists open obligations)
+            | ACCOUNT_STATUS_CONFLICT
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "202":
+          description: Accepted
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/AccountDeletionResponse"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/password:
+    put:
+      tags:
+      - Account security
+      summary: "Change the password; other devices are logged out, this one stays\
+        \ (FR-ID-08)"
+      operationId: changePassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+        required: true
+      responses:
+        "400":
+          description: "CURRENT_PASSWORD_INVALID | PASSWORD_REUSED | WEAK_PASSWORD\
+            \ | VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/location-consent:
+    get:
+      tags:
+      - Location consent
+      summary: Get the current consent and the terms version clients must show
+      operationId: getConsent
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/LocationConsentResponse"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    put:
+      tags:
+      - Location consent
+      summary: Give consent to the current terms version
+      operationId: grantConsent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocationConsentRequest"
+        required: true
+      responses:
+        "400":
+          description: "OUTDATED_TERMS_VERSION: termsVersion is not the current one\
+            \ | VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+      - Location consent
+      summary: Withdraw consent; precise locations are no longer collected
+      operationId: withdrawConsent
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/email:
+    put:
+      tags:
+      - Account security
+      summary: Add or replace the optional email address and send a verification link
+        (FR-ID-09)
+      operationId: changeEmail
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeEmailRequest"
+        required: true
+      responses:
+        "409":
+          description: "EMAIL_UNAVAILABLE: another account uses the address"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "202":
+          description: Accepted
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/consents/push-marketing:
+    put:
+      tags:
+      - Consents
+      summary: Agree to marketing pushes
+      operationId: grantPushMarketing
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ConsentResponse"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+      - Consents
+      summary: Withdraw consent to marketing pushes
+      operationId: withdrawPushMarketing
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/blocks/{userId}:
+    put:
+      tags:
+      - Blocks
+      summary: Block a user; blocking again changes nothing
+      operationId: block
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "400":
+          description: CANNOT_BLOCK_SELF
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: "USER_NOT_FOUND: unknown or deleted account"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+      - Blocks
+      summary: Unblock a user; unblocking a user who is not blocked changes nothing
+      operationId: unblock
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/avatar:
+    put:
+      tags:
+      - Profile
+      summary: "Step 2 of an avatar change: confirm the uploaded image"
+      operationId: confirmAvatar
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmAvatarRequest"
+        required: true
+      responses:
+        "400":
+          description: "INVALID_AVATAR_KEY | AVATAR_NOT_UPLOADED | INVALID_IMAGE (the\
+            \ upload is deleted) | VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+      - Profile
+      summary: Remove the avatar
+      operationId: removeAvatar
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/areas/active:
+    put:
+      tags:
+      - Areas
+      summary: Choose the area that drives the feed and its range (UC-AR-04)
+      operationId: selectActive
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SelectActiveAreaRequest"
+        required: true
+      responses:
+        "400":
+          description: "INVALID_RANGE: rangeLevel is not NEAR, MEDIUM or FAR | VALIDATION_FAILED:\
+            \ errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: "AREA_NOT_FOUND: not one of the caller's areas"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "AREA_STATUS_CONFLICT: only a VERIFIED or EXPIRING area"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/email/verification:
+    post:
+      tags:
+      - Account security
+      summary: Send a new verification link to the unverified email address (FR-ID-09)
+      operationId: resendEmailVerification
+      responses:
+        "400":
+          description: "EMAIL_NOT_SET: the account has no email"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "202":
+          description: Accepted
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/avatar/upload-url:
+    post:
+      tags:
+      - Profile
+      summary: "Step 1 of an avatar change: get a presigned upload URL"
+      operationId: createAvatarUploadUrl
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AvatarUploadUrlRequest"
+        required: true
+      responses:
+        "400":
+          description: "INVALID_IMAGE: not JPEG, PNG or WebP, or over 5 MB | VALIDATION_FAILED:\
+            \ errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/auth/register:
+    post:
+      tags:
+      - Authentication
+      summary: "Register with the phone number, the SMS code and the accepted policies\
+        \ (FR-ID-01)"
+      operationId: register
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+        required: true
+      responses:
+        "400":
+          description: "WEAK_PASSWORD (violations lists every rule) | INVALID_PHONE\
+            \ | VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: PHONE_ALREADY_REGISTERED (only after a correct code) | POLICY_VERSION_STALE
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: CONSENT_REQUIRED | OTP_INVALID (remainingAttempts) | OTP_EXPIRED
+            | OTP_ATTEMPTS_EXCEEDED
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: "RATE_LIMITED: too many registrations from this IP; see Retry-After"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "201":
+          description: Created
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/RegistrationResponse"
+      security: []
+  /api/v1/auth/register/otp:
+    post:
+      tags:
+      - Authentication
+      summary: Send the 6-digit registration code by SMS (FR-ID-02)
+      operationId: sendRegistrationCode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendOtpRequest"
+        required: true
+      responses:
+        "400":
+          description: "INVALID_PHONE: not a Vietnamese mobile number | VALIDATION_FAILED:\
+            \ errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: "OTP_RATE_LIMITED: inside the 60 s resend interval or over\
+            \ 5 codes per day; see Retry-After"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: "SMS_UNAVAILABLE: the SMS gateway failed; the daily quota is\
+            \ not used"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "202":
+          description: Accepted
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OtpChallengeResponse"
+      security: []
+  /api/v1/auth/refresh:
+    post:
+      tags:
+      - Authentication
+      summary: Exchange a refresh token for a new token pair; the old refresh token
+        is revoked (FR-ID-04)
+      operationId: refresh
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+        required: true
+      responses:
+        "401":
+          description: INVALID_REFRESH_TOKEN | REFRESH_TOKEN_REUSED (the whole session
+            is revoked)
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: ACCOUNT_SUSPENDED | ACCOUNT_BANNED
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      security: []
+  /api/v1/auth/password/verify-otp:
+    post:
+      tags:
+      - Authentication
+      summary: Exchange the SMS reset code for a single-use reset token (FR-ID-07)
+      operationId: verifyResetCode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyResetCodeRequest"
+        required: true
+      responses:
+        "422":
+          description: OTP_INVALID (remainingAttempts) | OTP_EXPIRED | OTP_ATTEMPTS_EXCEEDED
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      security: []
+  /api/v1/auth/password/reset:
+    post:
+      tags:
+      - Authentication
+      summary: Set a new password with the reset token from the SMS step or the email
+        link; logs out every session
+      operationId: resetPassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordRequest"
+        required: true
+      responses:
+        "400":
+          description: "WEAK_PASSWORD: the reset token stays valid | VALIDATION_FAILED:\
+            \ errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: "RESET_TOKEN_INVALID: unknown, used or expired"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "204":
+          description: No Content
+      security: []
+  /api/v1/auth/password/forgot:
+    post:
+      tags:
+      - Authentication
+      summary: Start a password reset by SMS code or email link; same answer whether
+        or not the account exists (FR-ID-07)
+      operationId: forgotPassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForgotPasswordRequest"
+        required: true
+      responses:
+        "400":
+          description: "INVALID_PHONE | VALIDATION_FAILED: errors lists each invalid\
+            \ field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: OTP_RATE_LIMITED; see Retry-After
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: SMS_UNAVAILABLE
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "202":
+          description: Accepted
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PasswordResetStartedResponse"
+      security: []
+  /api/v1/auth/logout:
+    post:
+      tags:
+      - Authentication
+      summary: Log out by revoking the refresh token and dropping the device's push
+        token (FR-ID-05)
+      operationId: logout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      security: []
+  /api/v1/auth/login:
+    post:
+      tags:
+      - Authentication
+      summary: Log in with the phone number or a verified email (FR-ID-03)
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+        required: true
+      responses:
+        "400":
+          description: "INVALID_PHONE: the identifier is neither an email nor a Vietnamese\
+            \ mobile number | VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "INVALID_CREDENTIALS: unknown identifier, unverified email\
+            \ or wrong password (identical answers)"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: "ACCOUNT_SUSPENDED (reason, suspendedUntil) | ACCOUNT_BANNED\
+            \ (reason)"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: "LOGIN_LOCKED: 5 failures for the identifier or 20 from the\
+            \ IP in 15 min; see Retry-After"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      security: []
+  /api/v1/auth/email-verification:
+    post:
+      tags:
+      - Authentication
+      summary: Verify the email address with the token from the verification link
+        (FR-ID-09)
+      operationId: verifyEmail
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyEmailRequest"
+        required: true
+      responses:
+        "422":
+          description: "INVALID_VERIFICATION_TOKEN: unknown, used or expired, or the\
+            \ email changed since"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "204":
+          description: No Content
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      security: []
+  /api/v1/areas/{areaId}/renewals:
+    post:
+      tags:
+      - Areas
+      summary: Renew an area with a fresh GPS fix within 1 500 m of its center (UC-AR-02)
+      operationId: renew
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        description: UUID; resending the same key and body returns the stored response
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenewAreaRequest"
+        required: true
+      responses:
+        "403":
+          description: "LOCATION_CONSENT_REQUIRED | ACCESS_DENIED: the account is\
+            \ not ACTIVE or has no verified phone"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: "AREA_NOT_FOUND: not one of the caller's areas"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "AREA_STATUS_CONFLICT: the area was removed | IDEMPOTENCY_CONFLICT\
+            \ | DUPLICATE_REQUEST"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: "OUT_OF_RENEW_RADIUS: farther than 1 500 m; distanceMeters\
+            \ rounded to 100 m | AREA_VERIFICATION_REJECTED: hard rule broken; reasons\
+            \ with guidance"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: "AREA_RATE_LIMITED: reason DAILY_ATTEMPTS; Retry-After header"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/areas/verifications:
+    post:
+      tags:
+      - Areas
+      summary: "Verify a new area, or replace one, with a fresh GPS fix (UC-AR-01,\
+        \ UC-AR-03)"
+      description: "201 creates an area. 200 means the fix was within 1 500 m of an\
+        \ existing area, which was renewed instead (UC-AR-01 A4)."
+      operationId: verify
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        description: UUID; resending the same key and body returns the stored response
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyAreaRequest"
+        required: true
+      responses:
+        "201":
+          description: A new area was verified
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/AreaVerificationResponse"
+        "200":
+          description: An existing area was renewed instead
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/AreaVerificationResponse"
+        "403":
+          description: "LOCATION_CONSENT_REQUIRED: no PRECISE_LOCATION consent | ACCESS_DENIED:\
+            \ the account is not ACTIVE or has no verified phone"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: "AREA_NOT_FOUND: replaceAreaId is not one of the caller's areas"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "AREA_LIMIT_REACHED: already 2 areas; areaIds lists them for\
+            \ UC-AR-03 | AREA_HAS_OPEN_TRANSACTIONS: the replaced area's listings\
+            \ have open transactions | AREA_STATUS_CONFLICT: the replaced area was\
+            \ removed | IDEMPOTENCY_CONFLICT | DUPLICATE_REQUEST"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: "AREA_VERIFICATION_REJECTED: reasons MOCK_LOCATION, LOW_ACCURACY,\
+            \ STALE_FIX, IMPOSSIBLE_SPEED with guidance | OUT_OF_RENEW_RADIUS: when\
+            \ renewing a nearby area"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: "AREA_RATE_LIMITED: reason DAILY_ATTEMPTS (5 a day) or AREA_CHANGES\
+            \ (3 per 30 days); Retry-After header"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/admin/users/{userId}/unlock:
+    post:
+      tags:
+      - "Admin: users"
+      summary: Lift a suspension or a ban
+      operationId: unlockUser
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UnlockUserRequest"
+        required: true
+      responses:
+        "404":
+          description: USER_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "ACCOUNT_STATUS_CONFLICT: neither suspended nor banned"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/admin/users/{userId}/suspend:
+    post:
+      tags:
+      - "Admin: users"
+      summary: "Suspend an account for 1, 7 or 30 days: revoke its sessions and hide\
+        \ its listings"
+      operationId: suspendUser
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuspendUserRequest"
+        required: true
+      responses:
+        "400":
+          description: "INVALID_SUSPENSION_PERIOD: days must be 1, 7 or 30 | VALIDATION_FAILED:\
+            \ errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: CANNOT_LOCK_OWN_ACCOUNT | CANNOT_LOCK_ADMIN
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: USER_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: ACCOUNT_STATUS_CONFLICT | CONCURRENT_MODIFICATION
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/admin/users/{userId}/lock:
+    post:
+      tags:
+      - "Admin: users"
+      summary: "Ban an account for good: revoke its sessions and hide its listings"
+      operationId: lockUser
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LockUserRequest"
+        required: true
+      responses:
+        "403":
+          description: CANNOT_LOCK_OWN_ACCOUNT | CANNOT_LOCK_ADMIN
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: USER_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: ACCOUNT_STATUS_CONFLICT | CONCURRENT_MODIFICATION
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/test/echo:
+    post:
+      tags:
+      - test-controller
+      operationId: echo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties: {}
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/areas/{areaId}:
+    delete:
+      tags:
+      - Areas
+      summary: "Remove an area; its listings are hidden (UC-AR-03, FR-AR-07)"
+      operationId: remove
+      parameters:
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "404":
+          description: "AREA_NOT_FOUND: not one of the caller's areas"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "AREA_HAS_OPEN_TRANSACTIONS: listingIds have open transactions\
+            \ | AREA_STATUS_CONFLICT: already removed"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    patch:
+      tags:
+      - Areas
+      summary: Name an area (UC-AR-01 step 9)
+      operationId: rename
+      parameters:
+      - name: areaId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameAreaRequest"
+        required: true
+      responses:
+        "404":
+          description: "AREA_NOT_FOUND: not one of the caller's areas"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "AREA_STATUS_CONFLICT: the area was removed"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/{userId}:
+    get:
+      tags:
+      - Public profiles
+      summary: Get a user's public profile; no coordinates and no contact data
+      operationId: getPublicProfile
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "404":
+          description: USER_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      security: []
+  /api/v1/users/me/trading-gate:
+    get:
+      tags:
+      - Trading gate
+      summary: "Whether the user may trade, and which steps are missing"
+      operationId: getTradingGate
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/TradingGateResponse"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/consents:
+    get:
+      tags:
+      - Consents
+      summary: "Current consent for every purpose: TERMS, PRIVACY, PRECISE_LOCATION,\
+        \ PUSH_MARKETING"
+      operationId: listConsents
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConsentResponse"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/blocks:
+    get:
+      tags:
+      - Blocks
+      summary: "List the users I blocked, most recent first"
+      operationId: listBlocked
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "400":
+          description: INVALID_CURSOR
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/areas/me:
+    get:
+      tags:
+      - Areas
+      summary: The caller's areas in slot order (A27)
+      operationId: listMyAreas
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AreaResponse"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/admin/users:
+    get:
+      tags:
+      - "Admin: users"
+      summary: "Search accounts by phone, email or display name, newest first"
+      operationId: searchUsers
+      parameters:
+      - name: query
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVE
+          - SUSPENDED
+          - BANNED
+          - PENDING_DELETION
+          - DELETED
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "400":
+          description: INVALID_CURSOR
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/admin/users/{userId}:
+    get:
+      tags:
+      - "Admin: users"
+      summary: Get one account
+      operationId: getUser
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "404":
+          description: USER_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/test:
+    get:
+      tags:
+      - test-controller
+      operationId: ping
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties: {}
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/test/hello:
+    get:
+      tags:
+      - test-controller
+      operationId: hello
+      parameters:
+      - name: name
+        in: query
+        required: false
+        schema:
+          type: string
+          default: world
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+components:
+  schemas:
+    UpdateProfileRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+          description: "2-30 characters, trimmed; changeable once every 30 days"
+          example: An Nguyen
+          maxLength: 30
+          minLength: 2
+      required:
+      - displayName
+    ProfileAreaResponse:
+      type: object
+      description: One of the caller's areas (FR-ID-12). It never carries coordinates
+        (NFR-15)
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+          example: Nhà
+        localityName:
+          type: string
+          description: Public neighborhood name; null until known
+        status:
+          type: string
+          description: VERIFIED | EXPIRING | EXPIRED; EXPIRED needs renewal
+        active:
+          type: boolean
+          description: Drives the feed (FR-AR-08)
+        expiresAt:
+          type: string
+          format: date-time
+    ProfileResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        email:
+          type: string
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+        role:
+          type: string
+          enum:
+          - USER
+          - ADMIN
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - SUSPENDED
+          - BANNED
+          - PENDING_DELETION
+          - DELETED
+        areas:
+          type: array
+          description: "Areas that are not removed, in slot order; empty before the\
+            \ first verification"
+          items:
+            $ref: "#/components/schemas/ProfileAreaResponse"
+        phoneVerified:
+          type: boolean
+        emailVerified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        displayNameChangeAllowedAt:
+          type: string
+          format: date-time
+    ChangePasswordRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          example: Secret123
+          maxLength: 200
+          minLength: 0
+        newPassword:
+          type: string
+          description: "At least 8 characters, at most 72 UTF-8 bytes, letters and\
+            \ digits"
+          example: NewSecret456
+          maxLength: 200
+          minLength: 0
+      required:
+      - currentPassword
+      - newPassword
+    LocationConsentRequest:
+      type: object
+      properties:
+        termsVersion:
+          type: string
+          description: Must equal currentTermsVersion from GET
+          example: "1.0"
+          maxLength: 20
+          minLength: 0
+      required:
+      - termsVersion
+    LocationConsentResponse:
+      type: object
+      properties:
+        granted:
+          type: boolean
+        termsVersion:
+          type: string
+        consentedAt:
+          type: string
+          format: date-time
+        withdrawnAt:
+          type: string
+          format: date-time
+        currentTermsVersion:
+          type: string
+    ChangeEmailRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: an.nguyen@example.com
+          maxLength: 254
+          minLength: 0
+      required:
+      - email
+    ConsentResponse:
+      type: object
+      properties:
+        purpose:
+          type: string
+          enum:
+          - TERMS
+          - PRIVACY
+          - PRECISE_LOCATION
+          - PUSH_MARKETING
+        granted:
+          type: boolean
+        policyVersion:
+          type: string
+        grantedAt:
+          type: string
+          format: date-time
+        withdrawnAt:
+          type: string
+          format: date-time
+    ConfirmAvatarRequest:
+      type: object
+      properties:
+        objectKey:
+          type: string
+          description: objectKey returned by the upload-url step
+          example: avatars/1b0c6f1e-0000-4000-8000-000000000000/7f3e6a2b-0000-4000-8000-000000000000.jpg
+          maxLength: 200
+          minLength: 0
+      required:
+      - objectKey
+    SelectActiveAreaRequest:
+      type: object
+      properties:
+        areaId:
+          type: string
+          format: uuid
+        rangeLevel:
+          type: string
+          description: "NEAR 2 km, MEDIUM 4 km or FAR 6 km"
+          enum:
+          - NEAR
+          - MEDIUM
+          - FAR
+          example: MEDIUM
+          minLength: 1
+      required:
+      - areaId
+      - rangeLevel
+    AreaResponse:
+      type: object
+      description: An area of the caller. It never carries coordinates (NFR-15)
+      properties:
+        id:
+          type: string
+          format: uuid
+        slot:
+          type: integer
+          format: int32
+          description: 1 or 2
+        label:
+          type: string
+          example: Nhà
+        localityName:
+          type: string
+          description: Public neighborhood name; null until known
+        status:
+          type: string
+          description: VERIFIED and EXPIRING unlock trading; EXPIRED needs renewal
+          enum:
+          - VERIFIED
+          - EXPIRING
+          - EXPIRED
+          - REMOVED
+        rangeLevel:
+          type: string
+          enum:
+          - NEAR
+          - MEDIUM
+          - FAR
+        active:
+          type: boolean
+          description: Drives the feed (FR-AR-08)
+        verifiedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: verifiedAt + 30 days
+    AvatarUploadUrlRequest:
+      type: object
+      properties:
+        contentType:
+          type: string
+          description: "image/jpeg (also image/jpg), image/png or image/webp"
+          example: image/jpeg
+          maxLength: 50
+          minLength: 0
+        sizeBytes:
+          type: integer
+          format: int64
+          description: "File size in bytes, at most image.max_bytes (5 MB)"
+          example: 204800
+          exclusiveMinimum: 0
+      required:
+      - contentType
+    AvatarUploadUrlResponse:
+      type: object
+      properties:
+        objectKey:
+          type: string
+        uploadUrl:
+          type: string
+        method:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        requiredHeaders:
+          type: object
+          additionalProperties:
+            type: string
+    RegisterRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+          description: "Same number the code was sent to; 0912345678, 84912345678\
+            \ or +84912345678"
+          example: "0912345678"
+          maxLength: 20
+          minLength: 0
+        challengeId:
+          type: string
+          format: uuid
+          description: From POST /auth/register/otp
+        otp:
+          type: string
+          description: 6-digit SMS code
+          example: "123456"
+          minLength: 1
+          pattern: "[0-9]{6}"
+        password:
+          type: string
+          description: "At least 8 characters, at most 72 UTF-8 bytes, letters and\
+            \ digits"
+          example: Secret123
+          maxLength: 200
+          minLength: 0
+        displayName:
+          type: string
+          example: An Nguyen
+          maxLength: 30
+          minLength: 2
+        termsVersion:
+          type:
+          - string
+          - "null"
+          description: Accepted Terms version; leave out when not accepted
+          example: "1.0"
+          maxLength: 20
+          minLength: 0
+        privacyVersion:
+          type:
+          - string
+          - "null"
+          description: Accepted Privacy Policy version; leave out when not accepted
+          example: "1.0"
+          maxLength: 20
+          minLength: 0
+        pushMarketing:
+          type:
+          - boolean
+          - "null"
+          description: Optional consent to marketing pushes
+          example: false
+      required:
+      - challengeId
+      - displayName
+      - otp
+      - password
+      - phone
+    RegistrationResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        tokens:
+          $ref: "#/components/schemas/TokenResponse"
+    TokenResponse:
+      type: object
+      properties:
+        tokenType:
+          type: string
+        accessToken:
+          type: string
+        accessTokenExpiresAt:
+          type: string
+          format: date-time
+        refreshToken:
+          type: string
+        refreshTokenExpiresAt:
+          type: string
+          format: date-time
+    SendOtpRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+          description: "Vietnamese mobile number; spaces, dots and dashes allowed"
+          example: 0912 345 678
+          maxLength: 20
+          minLength: 0
+      required:
+      - phone
+    OtpChallengeResponse:
+      type: object
+      properties:
+        challengeId:
+          type: string
+          format: uuid
+        expiresInSeconds:
+          type: integer
+          format: int64
+        resendAfterSeconds:
+          type: integer
+          format: int64
+    RefreshTokenRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+          example: q3nV7m...
+          maxLength: 100
+          minLength: 0
+      required:
+      - refreshToken
+    VerifyResetCodeRequest:
+      type: object
+      properties:
+        challengeId:
+          type: string
+          format: uuid
+          description: From POST /auth/password/forgot
+        phone:
+          type: string
+          example: "0912345678"
+          maxLength: 20
+          minLength: 0
+        otp:
+          type: string
+          example: "123456"
+          minLength: 1
+          pattern: "[0-9]{6}"
+      required:
+      - challengeId
+      - otp
+      - phone
+    PasswordResetTokenResponse:
+      type: object
+      properties:
+        resetToken:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    ResetPasswordRequest:
+      type: object
+      properties:
+        resetToken:
+          type: string
+          description: From verify-otp or the email link
+          maxLength: 100
+          minLength: 0
+        newPassword:
+          type: string
+          example: NewSecret456
+          maxLength: 200
+          minLength: 0
+      required:
+      - newPassword
+      - resetToken
+    ForgotPasswordRequest:
+      type: object
+      properties:
+        identifier:
+          type: string
+          description: Phone number (SMS code) or a verified email (reset link)
+          example: "0912345678"
+          maxLength: 254
+          minLength: 0
+      required:
+      - identifier
+    PasswordResetStartedResponse:
+      type: object
+      properties:
+        channel:
+          type: string
+        challengeId:
+          type: string
+          format: uuid
+        expiresInSeconds:
+          type: integer
+          format: int64
+        resendAfterSeconds:
+          type: integer
+          format: int64
+    LogoutRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+          example: q3nV7m...
+          maxLength: 100
+          minLength: 0
+        fcmToken:
+          type:
+          - string
+          - "null"
+          description: Push token of this device; its pushes stop
+          maxLength: 300
+          minLength: 0
+      required:
+      - refreshToken
+    LoginRequest:
+      type: object
+      properties:
+        identifier:
+          type: string
+          description: Phone number or a verified email
+          example: "0912345678"
+          maxLength: 254
+          minLength: 0
+        password:
+          type: string
+          example: Secret123
+          maxLength: 200
+          minLength: 0
+      required:
+      - identifier
+      - password
+    VerifyEmailRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          description: token query parameter of the email link
+          maxLength: 100
+          minLength: 0
+      required:
+      - token
+    DeviceSignalsPayload:
+      type: object
+      description: Device signals read by the app. Send null for a signal that could
+        not be read; signals are stored for moderators and never reject the verification
+        (FR-AR-05)
+      properties:
+        emulator:
+          type: boolean
+          description: Running on an emulator
+        rooted:
+          type: boolean
+          description: The device is rooted
+        developerOptions:
+          type: boolean
+          description: Developer options are on
+        mockLocationApp:
+          type: boolean
+          description: A mock-location app is installed
+    RenewAreaRequest:
+      type: object
+      properties:
+        latitude:
+          type: number
+          format: double
+          example: 10.87
+          maximum: 90
+          minimum: -90
+        longitude:
+          type: number
+          format: double
+          example: 106.8031
+          maximum: 180
+          minimum: -180
+        accuracyMeters:
+          type: number
+          format: double
+          description: "Horizontal accuracy reported by the OS, in meters; over 100\
+            \ is rejected"
+          example: 12.5
+          minimum: 0
+        fixTime:
+          type: string
+          format: date-time
+          description: When the GPS fix was taken; older than 120 s is rejected
+          example: 2026-11-22T02:00:00Z
+        mockLocation:
+          type: boolean
+          description: The OS mock-location flag; true is rejected
+        deviceSignals:
+          $ref: "#/components/schemas/DeviceSignalsPayload"
+        appVersion:
+          type: string
+          example: 1.0.0
+          maxLength: 20
+          minLength: 0
+      required:
+      - accuracyMeters
+      - fixTime
+      - latitude
+      - longitude
+      - mockLocation
+    AreaVerificationResponse:
+      type: object
+      properties:
+        area:
+          $ref: "#/components/schemas/AreaResponse"
+        renewal:
+          type: boolean
+          description: True when an existing area was renewed instead of a new one
+            created (the fix was within 1 500 m of it)
+    VerifyAreaRequest:
+      type: object
+      properties:
+        latitude:
+          type: number
+          format: double
+          example: 10.87
+          maximum: 90
+          minimum: -90
+        longitude:
+          type: number
+          format: double
+          example: 106.8031
+          maximum: 180
+          minimum: -180
+        accuracyMeters:
+          type: number
+          format: double
+          description: "Horizontal accuracy reported by the OS, in meters; over 100\
+            \ is rejected"
+          example: 12.5
+          minimum: 0
+        fixTime:
+          type: string
+          format: date-time
+          description: When the GPS fix was taken; older than 120 s is rejected
+          example: 2026-11-22T02:00:00Z
+        mockLocation:
+          type: boolean
+          description: The OS mock-location flag; true is rejected
+        deviceSignals:
+          $ref: "#/components/schemas/DeviceSignalsPayload"
+        appVersion:
+          type: string
+          example: 1.0.0
+          maxLength: 20
+          minLength: 0
+        label:
+          type: string
+          description: "The user's name for the area; \"Khu vực {slot}\" when absent"
+          example: Nhà
+          maxLength: 30
+          minLength: 0
+          pattern: .*\S.*
+        replaceAreaId:
+          type: string
+          format: uuid
+          description: Replace this area of the user instead of adding one (UC-AR-03)
+      required:
+      - accuracyMeters
+      - fixTime
+      - latitude
+      - longitude
+      - mockLocation
+    UnlockUserRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: Stored in the audit log
+          example: Appeal accepted
+          maxLength: 200
+          minLength: 0
+      required:
+      - reason
+    AdminUserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        email:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum:
+          - USER
+          - ADMIN
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - SUSPENDED
+          - BANNED
+          - PENDING_DELETION
+          - DELETED
+        suspendedUntil:
+          type: string
+          format: date-time
+        deletionRequestedAt:
+          type: string
+          format: date-time
+        phoneVerified:
+          type: boolean
+        emailVerified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SuspendUserRequest:
+      type: object
+      properties:
+        days:
+          type: integer
+          format: int32
+          description: "Suspension length in days: 1, 7 or 30"
+          example: 7
+        reason:
+          type: string
+          description: Stored in the audit log and shown to the user
+          example: Spam
+          maxLength: 200
+          minLength: 0
+      required:
+      - reason
+    LockUserRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: Stored in the audit log and shown to the user
+          example: Repeated scam reports
+          maxLength: 200
+          minLength: 0
+      required:
+      - reason
+    RenameAreaRequest:
+      type: object
+      properties:
+        label:
+          type: string
+          example: Công ty
+          maxLength: 30
+          minLength: 0
+      required:
+      - label
+    PublicProfileResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+        phoneVerified:
+          type: boolean
+        joinedAt:
+          type: string
+          format: date-time
+        deleted:
+          type: boolean
+        localityName:
+          type: string
+          description: "Area label: the public neighborhood name, never a coordinate\
+            \ (FR-ID-13); null when unknown, when no area is valid, or for a deleted\
+            \ account"
+    TradingGateResponse:
+      type: object
+      properties:
+        open:
+          type: boolean
+          description: "True when the user may post listings, open chats and make\
+            \ offers"
+        failures:
+          type: array
+          description: Unmet conditions in FR-ID-20 order; empty when open
+          items:
+            type: string
+            enum:
+            - ACCOUNT_RESTRICTED
+            - PHONE_NOT_VERIFIED
+            - NO_VALID_AREA
+            - AREA_EXPIRED
+            - CONSENT_MISSING
+    BlockedUserResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+        blockedAt:
+          type: string
+          format: date-time
+    CursorPageBlockedUserResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlockedUserResponse"
+        nextCursor:
+          type: string
+        hasMore:
+          type: boolean
+    CursorPageAdminUserResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUserResponse"
+        nextCursor:
+          type: string
+        hasMore:
+          type: boolean
+    DeleteAccountRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          description: Current password
+          example: Secret123
+          maxLength: 200
+          minLength: 0
+      required:
+      - password
+    AccountDeletionResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - SUSPENDED
+          - BANNED
+          - PENDING_DELETION
+          - DELETED
+        deleteAfter:
+          type: string
+          format: date-time
+    Problem:
+      type: object
+      additionalProperties: true
+      description: "RFC 9457 problem detail. Branch on `code`, never on `detail`.\
+        \ Some codes add members: remainingAttempts (OTP_INVALID), reason and suspendedUntil\
+        \ (ACCOUNT_SUSPENDED / ACCOUNT_BANNED), nextAllowedAt (NAME_CHANGE_TOO_SOON),\
+        \ blockers (ACCOUNT_DELETION_BLOCKED)."
+      properties:
+        title:
+          type: string
+          example: Unprocessable Content
+        violations:
+          type: array
+          description: Only for WEAK_PASSWORD
+          items:
+            type: object
+        errors:
+          type: array
+          description: Only for VALIDATION_FAILED
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+        detail:
+          type: string
+          example: The code is wrong. 4 attempts left.
+        code:
+          type: string
+          example: OTP_INVALID
+        status:
+          type: integer
+          format: int32
+          example: 422
+        type:
+          type: string
+          example: https://nearby.uit.edu.vn/problems/otp-invalid
+      required:
+      - code
+      - status
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

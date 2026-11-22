@@ -39,9 +39,15 @@ public final class UserFixtures {
 		return user;
 	}
 
-	public static User lockedUser() {
+	public static User bannedUser() {
 		User user = activeUser();
-		user.lock(NOW);
+		user.ban(NOW);
+		return user;
+	}
+
+	public static User suspendedUntil(Instant until) {
+		User user = activeUser();
+		user.suspend(until, NOW);
 		return user;
 	}
 

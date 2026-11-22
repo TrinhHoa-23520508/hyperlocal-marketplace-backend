@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 import static vn.edu.uit.nearby.nearby_backend.identity.domain.UserFixtures.NOW;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
@@ -24,8 +26,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.jpa.domain.Specification;
 
-import vn.edu.uit.nearby.nearby_backend.identity.UserBanned;
-import vn.edu.uit.nearby.nearby_backend.identity.UserUnbanned;
+import vn.edu.uit.nearby.nearby_backend.identity.SanctionLifted;
+import vn.edu.uit.nearby.nearby_backend.identity.SanctionType;
+import vn.edu.uit.nearby.nearby_backend.identity.UserSanctioned;
 import vn.edu.uit.nearby.nearby_backend.identity.application.auth.UserSessions;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.AccountStatus;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.AuditAction;
@@ -35,6 +38,7 @@ import vn.edu.uit.nearby.nearby_backend.identity.domain.UserFixtures;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.error.BusinessException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.ConflictException;
+import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.OperationNotAllowedException;
 import vn.edu.uit.nearby.nearby_backend.shared.web.CursorPage;
 
@@ -74,7 +78,7 @@ class UserAdministrationServiceImplTests {
 		assertThat(view.status()).isEqualTo(AccountStatus.BANNED);
 		verify(sessions).endAll(user.getId(), RevokeReason.SANCTION);
 		verify(auditLog).recordUserAction(ADMIN_ID, AuditAction.USER_LOCKED, user.getId(), Map.of("reason", REASON));
-		verify(events).publishEvent(new UserBanned(user.getId(), NOW));
+		verify(events).publishEvent(new UserSanctioned(user.getId(), SanctionType.BAN, null, NOW));
 	}
 
 	@Test
@@ -98,8 +102,64 @@ class UserAdministrationServiceImplTests {
 	}
 
 	@Test
+	void banningASuspendedAccountMakesItPermanent() {
+		User user = givenUser(UserFixtures.suspendedUntil(NOW.plus(Duration.ofDays(7))));
+
+		AdminUserView view = administration.lockUser(ADMIN_ID, user.getId(), REASON);
+
+		assertThat(view.status()).isEqualTo(AccountStatus.BANNED);
+		assertThat(view.suspendedUntil()).isNull();
+	}
+
+	@Test
+	void suspendingEndsSessionsAuditsTheEndAndNotifiesOtherModules() {
+		User user = givenUser(UserFixtures.activeUser());
+		Instant until = NOW.plus(Duration.ofDays(7));
+
+		AdminUserView view = administration.suspendUser(new SuspendUserCommand(ADMIN_ID, user.getId(), 7, REASON));
+
+		assertThat(view.status()).isEqualTo(AccountStatus.SUSPENDED);
+		assertThat(view.suspendedUntil()).isEqualTo(until);
+		verify(sessions).endAll(user.getId(), RevokeReason.SANCTION);
+		verify(auditLog).recordUserAction(ADMIN_ID, AuditAction.USER_SUSPENDED, user.getId(),
+				Map.of("reason", REASON, "until", until.toString()));
+		verify(events).publishEvent(new UserSanctioned(user.getId(), SanctionType.SUSPENSION, until, NOW));
+	}
+
+	@Test
+	void suspensionLengthMustBeOneSevenOrThirtyDays() {
+		assertThatThrownBy(
+				() -> administration.suspendUser(new SuspendUserCommand(ADMIN_ID, UUID.randomUUID(), 3, REASON)))
+			.isInstanceOf(InvalidRequestException.class)
+			.extracting(UserAdministrationServiceImplTests::codeOf)
+			.isEqualTo("INVALID_SUSPENSION_PERIOD");
+		verifyNoInteractions(users, sessions, auditLog, events);
+	}
+
+	@Test
+	void anotherAdminCannotBeSuspended() {
+		User otherAdmin = givenUser(UserFixtures.admin());
+
+		assertThatThrownBy(
+				() -> administration.suspendUser(new SuspendUserCommand(ADMIN_ID, otherAdmin.getId(), 1, REASON)))
+			.extracting(UserAdministrationServiceImplTests::codeOf)
+			.isEqualTo("CANNOT_LOCK_ADMIN");
+		verifyNoInteractions(sessions, auditLog, events);
+	}
+
+	@Test
+	void suspendingABannedAccountIsAConflict() {
+		User user = givenUser(UserFixtures.bannedUser());
+
+		assertThatThrownBy(() -> administration.suspendUser(new SuspendUserCommand(ADMIN_ID, user.getId(), 30, REASON)))
+			.extracting(UserAdministrationServiceImplTests::codeOf)
+			.isEqualTo("ACCOUNT_STATUS_CONFLICT");
+		verifyNoInteractions(sessions, auditLog, events);
+	}
+
+	@Test
 	void lockingALockedAccountIsAConflictAndChangesNothing() {
-		User user = givenUser(UserFixtures.lockedUser());
+		User user = givenUser(UserFixtures.bannedUser());
 
 		assertThatThrownBy(() -> administration.lockUser(ADMIN_ID, user.getId(), REASON))
 			.isInstanceOf(ConflictException.class);
@@ -108,14 +168,14 @@ class UserAdministrationServiceImplTests {
 
 	@Test
 	void unlockingRestoresTheAccountAuditsAndNotifies() {
-		User user = givenUser(UserFixtures.lockedUser());
+		User user = givenUser(UserFixtures.bannedUser());
 
 		AdminUserView view = administration.unlockUser(ADMIN_ID, user.getId(), "Appeal accepted");
 
 		assertThat(view.status()).isEqualTo(AccountStatus.ACTIVE);
 		verify(auditLog).recordUserAction(ADMIN_ID, AuditAction.USER_UNLOCKED, user.getId(),
 				Map.of("reason", "Appeal accepted"));
-		verify(events).publishEvent(new UserUnbanned(user.getId(), NOW));
+		verify(events).publishEvent(new SanctionLifted(user.getId(), NOW));
 	}
 
 	@Test
@@ -124,7 +184,7 @@ class UserAdministrationServiceImplTests {
 
 		assertThatThrownBy(() -> administration.unlockUser(ADMIN_ID, user.getId(), REASON))
 			.extracting(UserAdministrationServiceImplTests::codeOf)
-			.isEqualTo("ACCOUNT_NOT_LOCKED");
+			.isEqualTo("ACCOUNT_STATUS_CONFLICT");
 		verifyNoInteractions(auditLog, events);
 	}
 

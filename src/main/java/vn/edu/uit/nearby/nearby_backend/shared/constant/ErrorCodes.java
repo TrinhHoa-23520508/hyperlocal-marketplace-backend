@@ -24,6 +24,8 @@ public final class ErrorCodes {
 
 	public static final String DUPLICATE_REQUEST = "DUPLICATE_REQUEST";
 
+	public static final String IDEMPOTENCY_CONFLICT = "IDEMPOTENCY_CONFLICT";
+
 	public static final String INVALID_EMAIL = "INVALID_EMAIL";
 
 	public static final String INVALID_PHONE = "INVALID_PHONE";
@@ -62,7 +64,9 @@ public final class ErrorCodes {
 
 	public static final String INVALID_CREDENTIALS = "INVALID_CREDENTIALS";
 
-	public static final String ACCOUNT_LOCKED = "ACCOUNT_LOCKED";
+	public static final String ACCOUNT_SUSPENDED = "ACCOUNT_SUSPENDED";
+
+	public static final String ACCOUNT_BANNED = "ACCOUNT_BANNED";
 
 	public static final String INVALID_REFRESH_TOKEN = "INVALID_REFRESH_TOKEN";
 
@@ -84,9 +88,41 @@ public final class ErrorCodes {
 
 	public static final String CANNOT_LOCK_ADMIN = "CANNOT_LOCK_ADMIN";
 
-	public static final String ACCOUNT_ALREADY_LOCKED = "ACCOUNT_ALREADY_LOCKED";
+	public static final String ACCOUNT_STATUS_CONFLICT = "ACCOUNT_STATUS_CONFLICT";
 
-	public static final String ACCOUNT_NOT_LOCKED = "ACCOUNT_NOT_LOCKED";
+	public static final String INVALID_SUSPENSION_PERIOD = "INVALID_SUSPENSION_PERIOD";
+
+	public static final String ACCOUNT_DELETION_BLOCKED = "ACCOUNT_DELETION_BLOCKED";
+
+	public static final String CANNOT_DELETE_ADMIN = "CANNOT_DELETE_ADMIN";
+
+	public static final String NAME_CHANGE_TOO_SOON = "NAME_CHANGE_TOO_SOON";
+
+	public static final String CANNOT_BLOCK_SELF = "CANNOT_BLOCK_SELF";
+
+	public static final String CONTACT_NOT_ALLOWED = "CONTACT_NOT_ALLOWED";
+
+	public static final String AREA_VERIFICATION_REJECTED = "AREA_VERIFICATION_REJECTED";
+
+	public static final String AREA_RATE_LIMITED = "AREA_RATE_LIMITED";
+
+	public static final String AREA_LIMIT_REACHED = "AREA_LIMIT_REACHED";
+
+	public static final String AREA_NOT_FOUND = "AREA_NOT_FOUND";
+
+	public static final String AREA_STATUS_CONFLICT = "AREA_STATUS_CONFLICT";
+
+	public static final String OUT_OF_RENEW_RADIUS = "OUT_OF_RENEW_RADIUS";
+
+	public static final String AREA_HAS_OPEN_TRANSACTIONS = "AREA_HAS_OPEN_TRANSACTIONS";
+
+	public static final String INVALID_RANGE = "INVALID_RANGE";
+
+	public static final String OUT_OF_RANGE = "OUT_OF_RANGE";
+
+	public static final String PIN_OUTSIDE_AREA = "PIN_OUTSIDE_AREA";
+
+	public static final String TRADING_GATE_FAILED = "TRADING_GATE_FAILED";
 
 	private ErrorCodes() {
 	}

@@ -11,7 +11,9 @@ import static org.mockito.Mockito.when;
 import static vn.edu.uit.nearby.nearby_backend.identity.domain.UserFixtures.NOW;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,13 +27,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
+import vn.edu.uit.nearby.nearby_backend.identity.ProfileArea;
+import vn.edu.uit.nearby.nearby_backend.identity.ProfileAreas;
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityParametersFixture;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.UserFixtures;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.error.BusinessException;
 import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
-import vn.edu.uit.nearby.nearby_backend.shared.geo.GeoPoint;
+import vn.edu.uit.nearby.nearby_backend.shared.error.UnprocessableRequestException;
 import vn.edu.uit.nearby.nearby_backend.shared.storage.ImageStorage;
 import vn.edu.uit.nearby.nearby_backend.shared.storage.ImageStorage.PresignedUrl;
 import vn.edu.uit.nearby.nearby_backend.shared.storage.ImageStorage.StoredObject;
@@ -56,8 +60,7 @@ class ProfileServiceImplTests {
 
 	@BeforeEach
 	void createService() {
-		profileService = new ProfileServiceImpl(users, storage, IdentityParametersFixture.seeded(), events,
-				Clock.fixed(NOW, ZoneOffset.UTC));
+		profileService = serviceWith(List.of());
 	}
 
 	@Test
@@ -70,7 +73,7 @@ class ProfileServiceImplTests {
 		assertThat(profile.phoneVerified()).isTrue();
 		assertThat(profile.email()).isNull();
 		assertThat(profile.avatarUrl()).isNull();
-		assertThat(profile.homeArea()).isNull();
+		assertThat(profile.areas()).isEmpty();
 		assertThat(profile.emailVerified()).isFalse();
 		verifyNoInteractions(storage);
 	}
@@ -85,24 +88,78 @@ class ProfileServiceImplTests {
 	}
 
 	@Test
-	void updateTrimsTheNameAndRoundsTheHomeArea() {
+	void updateTrimsTheName() {
 		givenUserExists();
 
-		UserProfile profile = profileService.updateProfile(user.getId(),
-				new UpdateProfileCommand("  Binh Tran ", new GeoPoint(10.870149, 106.803151)));
+		UserProfile profile = profileService.updateProfile(user.getId(), new UpdateProfileCommand("  Binh Tran "));
 
 		assertThat(profile.displayName()).isEqualTo("Binh Tran");
-		assertThat(profile.homeArea()).isEqualTo(new GeoPoint(10.870, 106.803));
 	}
 
 	@Test
-	void updateWithoutHomeAreaClearsIt() {
+	void ownProfileListsTheAreasWithStatusAndExpiry() {
 		givenUserExists();
-		profileService.updateProfile(user.getId(), new UpdateProfileCommand("An", new GeoPoint(10.87, 106.8)));
+		ProfileArea home = new ProfileArea(UUID.randomUUID(), "Nhà", null, "EXPIRING", true, NOW.plusSeconds(60));
+		profileService = serviceWith(List.of(new FixedProfileAreas(List.of(home), Optional.empty())));
 
-		UserProfile profile = profileService.updateProfile(user.getId(), new UpdateProfileCommand("An", null));
+		assertThat(profileService.getProfile(user.getId()).areas()).containsExactly(home);
+	}
 
-		assertThat(profile.homeArea()).isNull();
+	@Test
+	void secondRenameWithinThirtyDaysIsRejectedAndTheProfileSaysWhenItIsAllowed() {
+		givenUserExists();
+
+		UserProfile renamed = profileService.updateProfile(user.getId(), new UpdateProfileCommand("Binh"));
+
+		assertThat(renamed.displayNameChangeAllowedAt()).isEqualTo(NOW.plus(Duration.ofDays(30)));
+		assertThatThrownBy(() -> profileService.updateProfile(user.getId(), new UpdateProfileCommand("Chi")))
+			.isInstanceOf(UnprocessableRequestException.class)
+			.extracting(this::codeOf)
+			.isEqualTo("NAME_CHANGE_TOO_SOON");
+	}
+
+	@Test
+	void profileOfANeverRenamedUserCanBeRenamedNow() {
+		givenUserExists();
+
+		assertThat(profileService.getProfile(user.getId()).displayNameChangeAllowedAt()).isNull();
+	}
+
+	@Test
+	void publicProfileShowsNameAvatarBadgeAndJoinDateOnly() {
+		givenUserExists();
+		user.replaceAvatar("avatars/a.jpg", NOW);
+		when(storage.presignDownload("avatars/a.jpg"))
+			.thenReturn(new PresignedUrl("https://storage/a.jpg", "GET", NOW.plusSeconds(600)));
+
+		PublicProfile profile = profileService.getPublicProfile(user.getId());
+
+		assertThat(profile).isEqualTo(new PublicProfile(user.getId(), UserFixtures.DISPLAY_NAME,
+				"https://storage/a.jpg", true, user.getCreatedAt(), false, null));
+	}
+
+	@Test
+	void publicProfileShowsTheAreaLabelButNeverACoordinate() {
+		givenUserExists();
+		profileService = serviceWith(List.of(new FixedProfileAreas(List.of(), Optional.of("Linh Trung"))));
+
+		assertThat(profileService.getPublicProfile(user.getId()).localityName()).isEqualTo("Linh Trung");
+	}
+
+	@Test
+	void publicProfileOfADeletedAccountIsAnonymous() {
+		user.requestDeletion(NOW);
+		user.anonymise("unusable", NOW);
+		givenUserExists();
+		profileService = serviceWith(List.of(new FixedProfileAreas(List.of(), Optional.of("Linh Trung"))));
+
+		PublicProfile profile = profileService.getPublicProfile(user.getId());
+
+		assertThat(profile.displayName()).isEqualTo(User.DELETED_DISPLAY_NAME);
+		assertThat(profile.avatarUrl()).isNull();
+		assertThat(profile.phoneVerified()).isFalse();
+		assertThat(profile.deleted()).isTrue();
+		assertThat(profile.localityName()).isNull();
 	}
 
 	@Test
@@ -117,6 +174,19 @@ class ProfileServiceImplTests {
 		assertThat(upload.uploadUrl()).isEqualTo("https://upload/" + upload.objectKey());
 		assertThat(upload.method()).isEqualTo("PUT");
 		assertThat(upload.requiredHeaders()).isEqualTo(Map.of("Content-Type", "image/webp"));
+	}
+
+	@Test
+	void jpgUploadIsSignedWithTheStandardJpegType() {
+		when(storage.presignUpload(anyString(), any()))
+			.thenAnswer(call -> new PresignedUrl("https://upload/" + call.getArgument(0), "PUT", NOW));
+
+		AvatarUpload upload = profileService.createAvatarUpload(user.getId(),
+				new AvatarUploadCommand("image/jpg", 1024));
+
+		assertThat(upload.objectKey()).endsWith(".jpg");
+		verify(storage).presignUpload(upload.objectKey(), "image/jpeg");
+		assertThat(upload.requiredHeaders()).isEqualTo(Map.of("Content-Type", "image/jpeg"));
 	}
 
 	@Test
@@ -199,6 +269,25 @@ class ProfileServiceImplTests {
 		new AvatarCleanupListener(storage).deleteDiscardedAvatar(new AvatarDiscarded("avatars/a.jpg"));
 
 		verify(storage).delete("avatars/a.jpg");
+	}
+
+	private ProfileServiceImpl serviceWith(List<ProfileAreas> profileAreas) {
+		return new ProfileServiceImpl(users, storage, IdentityParametersFixture.seeded(), events,
+				Clock.fixed(NOW, ZoneOffset.UTC), profileAreas);
+	}
+
+	private record FixedProfileAreas(List<ProfileArea> areas, Optional<String> locality) implements ProfileAreas {
+
+		@Override
+		public List<ProfileArea> areasOf(UUID userId) {
+			return areas;
+		}
+
+		@Override
+		public Optional<String> publicLocalityOf(UUID userId) {
+			return locality;
+		}
+
 	}
 
 	private void givenUserExists() {

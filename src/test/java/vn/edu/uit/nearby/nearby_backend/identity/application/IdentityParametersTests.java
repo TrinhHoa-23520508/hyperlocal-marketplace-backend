@@ -30,6 +30,13 @@ class IdentityParametersTests {
 		assertThat(parameters.registrationsPerHourPerIp()).isEqualTo(10);
 		assertThat(parameters.accountEmailsPerHour()).isEqualTo(5);
 		assertThat(parameters.imageMaxBytes()).isEqualTo(5L * 1024 * 1024);
+		assertThat(parameters.loginMaxFailedAttemptsPerIp()).isEqualTo(20);
+	}
+
+	@Test
+	void accountLifecycleIntervalsAreReadInDays() {
+		assertThat(parameters.accountDeletionGrace()).isEqualTo(Duration.ofDays(7));
+		assertThat(parameters.displayNameChangeInterval()).isEqualTo(Duration.ofDays(30));
 	}
 
 	@Test

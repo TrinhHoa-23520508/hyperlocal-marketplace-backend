@@ -10,7 +10,9 @@ import static vn.edu.uit.nearby.nearby_backend.identity.domain.UserFixtures.NOW;
 
 import java.time.Clock;
 import java.time.ZoneOffset;
+import java.util.EnumSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -21,8 +23,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import tools.jackson.databind.json.JsonMapper;
-import vn.edu.uit.nearby.nearby_backend.identity.UserBanned;
-import vn.edu.uit.nearby.nearby_backend.identity.UserUnbanned;
+import vn.edu.uit.nearby.nearby_backend.identity.SanctionLifted;
+import vn.edu.uit.nearby.nearby_backend.identity.SanctionType;
+import vn.edu.uit.nearby.nearby_backend.identity.UserSanctioned;
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityParametersFixture;
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityProperties;
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityProperties.BootstrapAdmin;
@@ -70,12 +73,33 @@ class AdminSupportTests {
 	}
 
 	@Test
-	void bannedAccountIsMarkedLockedAndUnbannedAccountIsCleared() {
+	void latestSanctionReasonIsReadFromTheAuditDetail() {
+		UUID userId = UUID.randomUUID();
+		givenLatestSanction(userId, "{\"reason\":\"Spam\",\"until\":\"2026-10-25T03:00:00Z\"}");
+
+		assertThat(auditLogService().latestSanctionReason(userId)).contains("Spam");
+	}
+
+	@Test
+	void sanctionWithoutAReasonOrWithoutAnEntryHasNoReason() {
+		UUID withoutReason = UUID.randomUUID();
+		givenLatestSanction(withoutReason, "{}");
+		UUID neverSanctioned = UUID.randomUUID();
+		when(auditLogRepository.findFirstByTargetTypeAndTargetIdAndActionInOrderByIdDesc(AuditLogEntry.USER_TARGET,
+				neverSanctioned, EnumSet.of(AuditAction.USER_SUSPENDED, AuditAction.USER_LOCKED)))
+			.thenReturn(Optional.empty());
+
+		assertThat(auditLogService().latestSanctionReason(withoutReason)).isEmpty();
+		assertThat(auditLogService().latestSanctionReason(neverSanctioned)).isEmpty();
+	}
+
+	@Test
+	void sanctionedAccountIsMarkedLockedAndLiftedAccountIsCleared() {
 		LockedAccountSynchronizer synchronizer = new LockedAccountSynchronizer(lockedAccounts);
 		UUID userId = UUID.randomUUID();
 
-		synchronizer.onUserBanned(new UserBanned(userId, NOW));
-		synchronizer.onUserUnbanned(new UserUnbanned(userId, NOW));
+		synchronizer.onUserSanctioned(new UserSanctioned(userId, SanctionType.SUSPENSION, NOW, NOW));
+		synchronizer.onSanctionLifted(new SanctionLifted(userId, NOW));
 
 		verify(lockedAccounts).markLocked(userId);
 		verify(lockedAccounts).clear(userId);
@@ -119,6 +143,18 @@ class AdminSupportTests {
 		assertThatThrownBy(
 				() -> initializer(new BootstrapAdmin("root@nearby.vn", "admin", "Root")).createBootstrapAdmin())
 			.isInstanceOf(WeakPasswordException.class);
+	}
+
+	private AuditLogService auditLogService() {
+		return new AuditLogServiceImpl(auditLogRepository, JsonMapper.builder().build(), CLOCK);
+	}
+
+	private void givenLatestSanction(UUID userId, String detailJson) {
+		AuditLogEntry entry = AuditLogEntry.onUser(UUID.randomUUID(), AuditAction.USER_SUSPENDED, userId, detailJson,
+				NOW);
+		when(auditLogRepository.findFirstByTargetTypeAndTargetIdAndActionInOrderByIdDesc(AuditLogEntry.USER_TARGET,
+				userId, EnumSet.of(AuditAction.USER_SUSPENDED, AuditAction.USER_LOCKED)))
+			.thenReturn(Optional.of(entry));
 	}
 
 	private AdminAccountInitializer initializer(BootstrapAdmin admin) {

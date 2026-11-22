@@ -14,6 +14,8 @@ public final class RedisKeyPrefixes {
 
 	public static final String LOGIN_FAILURES = "login-failures:";
 
+	public static final String LOGIN_FAILURES_BY_IP = "login-failures-ip:";
+
 	public static final String REGISTRATIONS_BY_IP = "registrations:";
 
 	public static final String ACCOUNT_EMAILS = "account-emails:";
@@ -23,6 +25,8 @@ public final class RedisKeyPrefixes {
 	public static final String OTP_RESEND_COOLDOWN = "otp-cooldown:";
 
 	public static final String OTP_DAILY_QUOTA = "otp-daily:";
+
+	public static final String AREA_DAILY_ATTEMPTS = "area-attempts:";
 
 	private RedisKeyPrefixes() {
 	}

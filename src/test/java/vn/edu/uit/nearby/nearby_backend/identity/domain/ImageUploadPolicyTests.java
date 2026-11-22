@@ -25,6 +25,14 @@ class ImageUploadPolicyTests {
 	}
 
 	@ParameterizedTest
+	@CsvSource({ "image/jpg,image/jpeg", "image/pjpeg,image/jpeg", "IMAGE/JPEG,image/jpeg",
+			"'image/png; charset=binary',image/png", "image/webp,image/webp" })
+	void returnsTheStandardTypeForAliasesCaseAndParameters(String contentType, String standardType) {
+		assertThat(policy.validate(contentType, 1)).isEqualTo(standardType);
+		assertThat(policy.fileExtensionOf(contentType)).isEqualTo(policy.fileExtensionOf(standardType));
+	}
+
+	@ParameterizedTest
 	@ValueSource(strings = { "image/gif", "application/pdf", "text/plain" })
 	void rejectsOtherFormats(String contentType) {
 		assertThatThrownBy(() -> policy.validate(contentType, 1)).isInstanceOf(InvalidRequestException.class)

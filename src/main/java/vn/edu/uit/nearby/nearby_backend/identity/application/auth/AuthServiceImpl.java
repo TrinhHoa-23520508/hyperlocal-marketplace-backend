@@ -5,12 +5,15 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.extern.slf4j.Slf4j;
 
+import vn.edu.uit.nearby.nearby_backend.identity.DeviceSignedOut;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.AccountIdentifier;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.PhoneNumber;
@@ -37,6 +40,10 @@ public class AuthServiceImpl implements AuthService {
 
 	private final PasswordEncoder passwordEncoder;
 
+	private final AccountAccessPolicy accessPolicy;
+
+	private final ApplicationEventPublisher events;
+
 	private final Clock clock;
 
 	// Checked when the identifier is unknown, so an unknown account and a wrong password
@@ -44,12 +51,15 @@ public class AuthServiceImpl implements AuthService {
 	private final String unknownUserPasswordHash;
 
 	public AuthServiceImpl(UserRepository users, RefreshTokenRepository refreshTokens, UserSessions sessions,
-			LoginAttemptGuard loginAttempts, PasswordEncoder passwordEncoder, Clock clock) {
+			LoginAttemptGuard loginAttempts, PasswordEncoder passwordEncoder, AccountAccessPolicy accessPolicy,
+			ApplicationEventPublisher events, Clock clock) {
 		this.users = users;
 		this.refreshTokens = refreshTokens;
 		this.sessions = sessions;
 		this.loginAttempts = loginAttempts;
 		this.passwordEncoder = passwordEncoder;
+		this.accessPolicy = accessPolicy;
+		this.events = events;
 		this.clock = clock;
 		this.unknownUserPasswordHash = passwordEncoder.encode(UUID.randomUUID().toString());
 	}
@@ -58,10 +68,11 @@ public class AuthServiceImpl implements AuthService {
 	@Transactional
 	public TokenPair login(LoginCommand command) {
 		AccountIdentifier identifier = AccountIdentifier.parse(command.identifier());
-		loginAttempts.ensureNotBlocked(identifier);
-		User user = authenticate(identifier, command.password());
-		loginAttempts.clearFailures(identifier);
-		user.ensureCanLogIn();
+		LoginAttempt attempt = new LoginAttempt(identifier, command.clientIp());
+		loginAttempts.ensureNotBlocked(attempt);
+		User user = authenticate(attempt, command.password());
+		loginAttempts.clearFailures(attempt);
+		accessPolicy.admitLogin(user);
 		return sessions.start(user);
 	}
 
@@ -78,23 +89,27 @@ public class AuthServiceImpl implements AuthService {
 			revokeStolenFamily(stored, now);
 		}
 		User user = users.getRequired(stored.getUserId());
-		user.ensureCanLogIn();
+		accessPolicy.ensureNotSanctioned(user);
 		return sessions.rotate(user, stored.family());
 	}
 
 	@Override
 	@Transactional
-	public void logout(String refreshToken) {
-		refreshTokens.findByTokenHash(TokenService.sha256Hex(refreshToken))
-			.ifPresent(stored -> refreshTokens.revokeIfActive(stored.getId(), clock.instant(), RevokeReason.LOGOUT));
+	public void logout(String refreshToken, @Nullable String fcmToken) {
+		refreshTokens.findByTokenHash(TokenService.sha256Hex(refreshToken)).ifPresent(stored -> {
+			refreshTokens.revokeIfActive(stored.getId(), clock.instant(), RevokeReason.LOGOUT);
+			if (fcmToken != null) {
+				events.publishEvent(new DeviceSignedOut(stored.getUserId(), fcmToken));
+			}
+		});
 	}
 
-	private User authenticate(AccountIdentifier identifier, String password) {
-		Optional<User> user = findLoginAccount(identifier);
+	private User authenticate(LoginAttempt attempt, String password) {
+		Optional<User> user = findLoginAccount(attempt.identifier());
 		String passwordHash = user.map(User::getPasswordHash).orElse(unknownUserPasswordHash);
 		boolean isPasswordCorrect = passwordEncoder.matches(password, passwordHash);
 		if (user.isEmpty() || !isPasswordCorrect) {
-			loginAttempts.recordFailure(identifier);
+			loginAttempts.recordFailure(attempt);
 			throw new AuthenticationFailedException(ErrorCodes.INVALID_CREDENTIALS,
 					"Phone number, email or password is incorrect.");
 		}

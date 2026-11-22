@@ -1,0 +1,14 @@
+package vn.edu.uit.nearby.nearby_backend.identity.web.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+/**
+ * @param days 1, 7 or 30
+ */
+public record SuspendUserRequest(@Schema(description = "Suspension length in days: 1, 7 or 30", example = "7") int days,
+		@Schema(description = "Stored in the audit log and shown to the user",
+				example = "Spam") @NotBlank @Size(max = 200) String reason) {
+
+}

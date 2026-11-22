@@ -86,7 +86,8 @@ class AdminUserApiIntegrationTests {
 			.andExpect(status().isUnauthorized());
 		client.login(email, AccountTestClient.PASSWORD)
 			.andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.code").value("ACCOUNT_LOCKED"));
+			.andExpect(jsonPath("$.code").value("ACCOUNT_BANNED"))
+			.andExpect(jsonPath("$.reason").value("Repeated scam reports"));
 		List<AuditLogEntry> entries = auditLog.findByTargetIdOrderByIdAsc(user.getId());
 		assertThat(entries).singleElement().satisfies(entry -> {
 			assertThat(entry.getAction()).isEqualTo(AuditAction.USER_LOCKED);
@@ -118,7 +119,50 @@ class AdminUserApiIntegrationTests {
 		lock(user.getId());
 
 		lock(user.getId()).andExpect(status().isConflict())
-			.andExpect(jsonPath("$.code").value("ACCOUNT_ALREADY_LOCKED"));
+			.andExpect(jsonPath("$.code").value("ACCOUNT_STATUS_CONFLICT"));
+	}
+
+	@Test
+	void suspensionBlocksTheUserUntilItEndsAndIsAudited() throws Exception {
+		String email = AccountTestClient.uniqueEmail();
+		User user = client.activeUser(email);
+		Session session = client.loginSession(email);
+
+		suspend(user.getId(), 7).andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("SUSPENDED"))
+			.andExpect(jsonPath("$.suspendedUntil").isNotEmpty());
+
+		mvc.perform(get("/api/v1/users/me").header(HttpHeaders.AUTHORIZATION, session.bearer()))
+			.andExpect(status().isUnauthorized());
+		client.login(email, AccountTestClient.PASSWORD)
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("ACCOUNT_SUSPENDED"))
+			.andExpect(jsonPath("$.reason").value("Spam"))
+			.andExpect(jsonPath("$.suspendedUntil").isNotEmpty());
+		assertThat(auditLog.findByTargetIdOrderByIdAsc(user.getId())).extracting(AuditLogEntry::getAction)
+			.containsExactly(AuditAction.USER_SUSPENDED);
+	}
+
+	@Test
+	void suspendedUserCanBeBannedAndThenUnlocked() throws Exception {
+		String email = AccountTestClient.uniqueEmail();
+		User user = client.activeUser(email);
+		suspend(user.getId(), 1);
+
+		lock(user.getId()).andExpect(status().isOk()).andExpect(jsonPath("$.suspendedUntil").doesNotExist());
+		client.postJson(ADMIN_USERS + "/" + user.getId() + "/unlock", "{\"reason\":\"Appeal accepted\"}", adminBearer)
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("ACTIVE"));
+
+		client.login(email, AccountTestClient.PASSWORD).andExpect(status().isOk());
+	}
+
+	@Test
+	void suspensionLengthOtherThanOneSevenOrThirtyDaysIsRejected() throws Exception {
+		User user = client.activeUser(AccountTestClient.uniqueEmail());
+
+		suspend(user.getId(), 3).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("INVALID_SUSPENSION_PERIOD"));
 	}
 
 	@Test
@@ -201,6 +245,11 @@ class AdminUserApiIntegrationTests {
 
 	private ResultActions lock(UUID userId) throws Exception {
 		return client.postJson(ADMIN_USERS + "/" + userId + "/lock", LOCK_REASON, adminBearer);
+	}
+
+	private ResultActions suspend(UUID userId, int days) throws Exception {
+		return client.postJson(ADMIN_USERS + "/" + userId + "/suspend",
+				"{\"days\":%d,\"reason\":\"Spam\"}".formatted(days), adminBearer);
 	}
 
 	private ResultActions search(String query) throws Exception {

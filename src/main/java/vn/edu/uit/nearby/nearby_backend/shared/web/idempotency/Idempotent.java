@@ -7,9 +7,10 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Requires an {@code Idempotency-Key} header. A key is accepted once per user and
- * endpoint within {@code app.idempotency.ttl}; a repeat is rejected with
- * {@code 409 DUPLICATE_REQUEST}.
+ * Requires an {@code Idempotency-Key} UUID header. Within {@code app.idempotency.ttl} a
+ * repeat of the same key, user and endpoint with the same body receives the original
+ * response (marked with {@code Idempotent-Replayed: true}); with another body it is
+ * rejected with {@code 409 IDEMPOTENCY_CONFLICT}.
  */
 @Documented
 @Target(ElementType.METHOD)

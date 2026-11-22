@@ -2,6 +2,7 @@ package vn.edu.uit.nearby.nearby_backend.identity.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.endsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -83,32 +84,32 @@ class ProfileApiIntegrationTests {
 	}
 
 	@Test
-	void updatedHomeAreaIsStoredRounded() throws Exception {
+	void updatedNameIsTrimmed() throws Exception {
 		updateProfile("""
-				{"displayName":"  Binh Tran ","homeArea":{"latitude":10.870149,"longitude":106.803151}}""")
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.displayName").value("Binh Tran"))
-			.andExpect(jsonPath("$.homeArea.latitude").value(10.87))
-			.andExpect(jsonPath("$.homeArea.longitude").value(106.803));
-
-		mvc.perform(get(ME).header(HttpHeaders.AUTHORIZATION, bearer))
-			.andExpect(jsonPath("$.homeArea.longitude").value(106.803));
+				{"displayName":"  Binh Tran "}""").andExpect(status().isOk())
+			.andExpect(jsonPath("$.displayName").value("Binh Tran"));
 	}
 
 	@Test
-	void omittingTheHomeAreaClearsIt() throws Exception {
+	void displayNameCanChangeOnlyOnceEveryThirtyDays() throws Exception {
 		updateProfile("""
-				{"displayName":"An","homeArea":{"latitude":10.87,"longitude":106.8}}""");
+				{"displayName":"Binh"}""").andExpect(status().isOk())
+			.andExpect(jsonPath("$.displayNameChangeAllowedAt").isNotEmpty());
 
 		updateProfile("""
-				{"displayName":"An"}""").andExpect(status().isOk()).andExpect(jsonPath("$.homeArea").doesNotExist());
+				{"displayName":"Chi"}""").andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.code").value("NAME_CHANGE_TOO_SOON"))
+			.andExpect(jsonPath("$.nextAllowedAt").isNotEmpty());
+		updateProfile("""
+				{"displayName":"Binh"}""").andExpect(status().isOk());
 	}
 
 	@Test
-	void outOfRangeCoordinatesAreAValidationError() throws Exception {
+	void removedHomeAreaFieldIsIgnoredAndNeverReturned() throws Exception {
 		updateProfile("""
-				{"displayName":"An","homeArea":{"latitude":91,"longitude":106.8}}""").andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.errors[0].field").value("homeArea.latitude"));
+				{"displayName":"An","homeArea":{"latitude":10.87,"longitude":106.8}}""").andExpect(status().isOk())
+			.andExpect(jsonPath("$.homeArea").doesNotExist())
+			.andExpect(jsonPath("$.areas").isEmpty());
 	}
 
 	@Test
@@ -118,6 +119,19 @@ class ProfileApiIntegrationTests {
 
 		confirmAvatar(objectKey).andExpect(status().isOk())
 			.andExpect(jsonPath("$.avatarUrl").value(containsString(objectKey)));
+	}
+
+	@Test
+	void jpgAvatarIsAcceptedAndMustBeUploadedAsImageJpeg() throws Exception {
+		String objectKey = AccountTestClient.read(client.postJson(AVATAR + "/upload-url", """
+				{"contentType":"image/jpg","sizeBytes":1024}""", bearer)
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.objectKey").value(endsWith(".jpg")))
+			.andExpect(jsonPath("$.requiredHeaders['Content-Type']").value("image/jpeg"))
+			.andReturn(), "$.objectKey");
+		storage.simulateUpload(objectKey, "image/jpeg", 1024);
+
+		confirmAvatar(objectKey).andExpect(status().isOk());
 	}
 
 	@Test

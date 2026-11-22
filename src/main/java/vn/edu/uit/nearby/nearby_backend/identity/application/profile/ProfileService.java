@@ -3,12 +3,23 @@ package vn.edu.uit.nearby.nearby_backend.identity.application.profile;
 import java.util.UUID;
 
 import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
+import vn.edu.uit.nearby.nearby_backend.shared.error.UnprocessableRequestException;
 
 public interface ProfileService {
 
 	UserProfile getProfile(UUID userId);
 
+	/**
+	 * @throws UnprocessableRequestException {@code NAME_CHANGE_TOO_SOON} when the display
+	 * name changed less than {@code profile.display_name_change_days} ago (FR-ID-11)
+	 */
 	UserProfile updateProfile(UUID userId, UpdateProfileCommand command);
+
+	/**
+	 * What anyone may see about a user (FR-ID-13): never coordinates or contact data. A
+	 * deleted account shows only the anonymised name.
+	 */
+	PublicProfile getPublicProfile(UUID userId);
 
 	/**
 	 * Step 1 of an avatar change: returns a presigned URL to upload the image directly to

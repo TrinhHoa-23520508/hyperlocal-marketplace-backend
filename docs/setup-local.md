@@ -161,6 +161,25 @@ Rules:
 - Every API except `/api/v1/auth/**` needs `Authorization: Bearer <access-token>`. Errors follow RFC 9457 (`application/problem+json`) and include a `code` field.
 - WebSocket: STOMP at `ws://<host>:8080/ws`. Send `Authorization: Bearer <token>` in the CONNECT frame.
 
+## 6.1 Calling the API from a browser (CORS)
+
+The admin console runs on another origin (Vite dev server `http://localhost:5173`), so the browser needs CORS. `CORS_ALLOWED_ORIGINS` (comma-separated) lists the allowed origins; the default allows `http://localhost:5173`. Tokens travel in the `Authorization` header, so credentials (cookies) stay off. The Android app is not a browser and needs no entry. Leave the variable empty to turn CORS off.
+
+## 6.2 Monitoring (Prometheus + Grafana)
+
+Off by default. Start the backend first (IDE or `./gradlew bootRun`), then:
+
+```sh
+docker compose --profile monitoring up -d prometheus grafana
+```
+
+| Tool | URL | Notes |
+|---|---|---|
+| Prometheus | http://localhost:9090 | Scrapes `host.docker.internal:8080/actuator/prometheus` every 15 s. *Status > Targets* must show `nearby-backend` as UP. Alert rules are under *Alerts* |
+| Grafana | http://localhost:3000 | Login `admin` / `admin` (`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`). Dashboard *Nearby > Nearby backend* is provisioned automatically |
+
+The configuration is shared with production: `deploy/prometheus/alerts.yml` (rules), `deploy/grafana/provisioning` (data source, dashboard provider) and `deploy/grafana/dashboards/nearby-backend.json`. Edit the JSON file, not the dashboard in the UI (UI changes are not saved). Stop with `docker compose --profile monitoring stop prometheus grafana`.
+
 ## 7. Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -171,6 +190,8 @@ Rules:
 | `Image storage not reachable` (WARN) | MinIO is not running. The app still starts. | `docker compose up -d minio` |
 | Flyway `checksum mismatch` | A migration that already ran was edited. | Never edit an applied migration; add a new `V9__...sql` instead. To reset local dev data, run `docker compose down -v`, which deletes all local data. |
 | `checkFormatMain FAILED` | Code is not formatted. | `./gradlew format` |
+| Browser shows a CORS error | The page's origin is not in `CORS_ALLOWED_ORIGINS`. | Add the exact origin (scheme, host and port) and restart the app. |
+| Prometheus target `nearby-backend` is DOWN | The backend is not running on port 8080 of the host. | Start the app; on Linux Docker Engine check that `host-gateway` is supported (Docker 20.10+). |
 
 ## 8. Useful Docker commands
 

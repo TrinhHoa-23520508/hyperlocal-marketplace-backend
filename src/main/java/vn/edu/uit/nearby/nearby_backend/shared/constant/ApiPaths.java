@@ -12,6 +12,14 @@ public final class ApiPaths {
 
 	public static final String CURRENT_USER_BASE = API_V1 + "/users/me";
 
+	public static final String CURRENT_USER_PATTERN = CURRENT_USER_BASE + "/**";
+
+	public static final String AREAS_BASE = API_V1 + "/areas";
+
+	public static final String USERS_BASE = API_V1 + "/users";
+
+	public static final String PUBLIC_PROFILE = USERS_BASE + "/{userId}";
+
 	public static final String ADMIN_BASE = API_V1 + "/admin";
 
 	public static final String ADMIN_PATTERN = ADMIN_BASE + "/**";
@@ -37,6 +45,8 @@ public final class ApiPaths {
 	public static final String ACTUATOR_PROMETHEUS = "/actuator/prometheus";
 
 	public static final String OPENAPI_DOCS_PATTERN = "/v3/api-docs/**";
+
+	public static final String OPENAPI_DOCS_YAML = "/v3/api-docs.yaml";
 
 	public static final String SWAGGER_UI_PATTERN = "/swagger-ui/**";
 
