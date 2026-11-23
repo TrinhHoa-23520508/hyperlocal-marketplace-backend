@@ -7,7 +7,7 @@ import org.jspecify.annotations.Nullable;
 import io.swagger.v3.oas.annotations.media.Schema;
 import vn.edu.uit.nearby.nearby_backend.listing.application.ListingImageService.ImageStatusView;
 import vn.edu.uit.nearby.nearby_backend.listing.domain.ImageProcessingStatus;
-import vn.edu.uit.nearby.nearby_backend.listing.domain.ImageRejectReason;
+import vn.edu.uit.nearby.nearby_backend.shared.image.ImageRejectReason;
 
 @Schema(description = "Poll until READY (use the image) or REJECTED (upload again) (UC-SY-10)")
 public record ImageStatusResponse(UUID imageId, ImageProcessingStatus status,

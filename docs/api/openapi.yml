@@ -17,6 +17,9 @@ tags:
   description: The current user's profile and avatar (FR-ID-03)
 - name: Discovery
   description: "Nearby feed, search, map and categories (FR-DC-01..07; A06-A09, A11)"
+- name: Notification settings
+  description: "Unread badges (FR-NT-06) and push preferences (FR-NT-03, UC-NT-02;\
+    \ A30)"
 - name: Listings
   description: "Post and manage listings, listing detail (FR-LS-01..14, FR-DC-08;\
     \ A10, A12, A14)"
@@ -34,10 +37,22 @@ tags:
   description: "GPS-verified activity areas (FR-AR-01..09; screens A27, A28)"
 - name: Trading gate
   description: "Conditions to post listings, chat and make offers (FR-ID-20)"
+- name: Chat images
+  description: "Upload the images of an IMAGE message; they are checked and re-encoded\
+    \ without EXIF/GPS (FR-CH-04, UC-CH-03, UC-SY-10; A18)"
+- name: Devices
+  description: "Register the FCM token of the app installation for push (FR-NT-02,\
+    \ FR-ID-03)"
+- name: Chat
+  description: "1-1 conversations about a listing (FR-CH-01..07, FR-CH-11; A10, A17,\
+    \ A18). REST is the source of truth; the same send and read also work over STOMP,\
+    \ which only pushes"
 - name: Blocks
   description: Block and unblock other users (FR-ID-14)
 - name: "Admin: users"
   description: "Find accounts, suspend, ban and lift sanctions (FR-ID-19, UC-AD-04)"
+- name: Notifications
+  description: "The in-app notification list (FR-NT-05, UC-NT-01; A29)"
 - name: Public profiles
   description: What anyone can see about a user (FR-ID-13)
 - name: Location consent
@@ -162,6 +177,59 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "204":
           description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/notification-preferences:
+    get:
+      tags:
+      - Notification settings
+      summary: My push preferences; a user who never saved any gets the defaults (A30)
+      operationId: get
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PreferencesView"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    put:
+      tags:
+      - Notification settings
+      summary: Save the push preferences and quiet hours (A30)
+      operationId: update
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePreferencesRequest"
+        required: true
+      responses:
+        "400":
+          description: "VALIDATION_FAILED: SYSTEM switched off, MARKETING without\
+            \ the PUSH_MARKETING consent, quiet hours that start and end together,\
+            \ or an unknown time zone | VALIDATION_FAILED: errors lists each invalid\
+            \ field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "CONCURRENT_MODIFICATION: the version is not the stored one;\
+            \ reload"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "401":
           description: "UNAUTHENTICATED: missing or expired token"
           content:
@@ -564,6 +632,103 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /api/v1/devices/{deviceId}:
+    put:
+      tags:
+      - Devices
+      summary: Save this installation's FCM token; call it after login and whenever
+        FCM rotates the token
+      description: "deviceId is the installation id, the same one the app sends at\
+        \ login. One device has one token."
+      operationId: registerDevice
+      parameters:
+      - name: deviceId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterDeviceRequest"
+        required: true
+      responses:
+        "400":
+          description: "VALIDATION_FAILED: blank or too long id or token, unknown\
+            \ platform | VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+      - Devices
+      summary: Forget this installation's token; nothing happens when it has none
+      operationId: unregisterDevice
+      parameters:
+      - name: deviceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/conversations/{conversationId}/read:
+    put:
+      tags:
+      - Chat
+      summary: The reader has seen messages up to this id (FR-CH-06)
+      description: Opening a conversation sets the reader's unread count to 0 on every
+        device. An older marker is ignored.
+      operationId: read
+      parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkReadRequest"
+        required: true
+      responses:
+        "404":
+          description: CONVERSATION_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "204":
+          description: No Content
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /api/v1/areas/active:
     put:
       tags:
@@ -643,6 +808,50 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/notifications/{notificationId}/read:
+    post:
+      tags:
+      - Notifications
+      summary: "Mark one notification read when the user taps it, then open its deepLink"
+      description: Marking a read notification again changes nothing.
+      operationId: markRead
+      parameters:
+      - name: notificationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "404":
+          description: "NOTIFICATION_NOT_FOUND: unknown, or someone else's"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/notifications/read-all:
+    post:
+      tags:
+      - Notifications
+      summary: "Mark every notification read: the badge becomes 0"
+      operationId: markAllRead
+      responses:
+        "204":
+          description: No Content
         "401":
           description: "UNAUTHENTICATED: missing or expired token"
           content:
@@ -954,6 +1163,285 @@ paths:
           description: "INVALID_IMAGE: not JPEG, PNG or WebP (convert HEIC to JPEG),\
             \ or over 5 242 880 bytes | VALIDATION_FAILED: errors lists each invalid\
             \ field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/conversations:
+    get:
+      tags:
+      - Chat
+      summary: "My conversations, newest activity first (A17)"
+      operationId: list
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "400":
+          description: INVALID_CURSOR
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    post:
+      tags:
+      - Chat
+      summary: "Open the conversation about a listing: the existing one, or a new\
+        \ one (A10 \"Chat\")"
+      description: "Opening twice returns the same id (200). A conversation that already\
+        \ exists is always returned, even if the listing was sold or deleted since."
+      operationId: open
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenConversationRequest"
+        required: true
+      responses:
+        "201":
+          description: A new conversation was created
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ConversationView"
+        "403":
+          description: "TRADING_GATE_FAILED (with reasons) | OUT_OF_RANGE | CONTACT_NOT_ALLOWED:\
+            \ neutral text, never says who blocked whom"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: "LISTING_NOT_FOUND: unknown, deleted or removed, with no earlier\
+            \ conversation"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "INVALID_LISTING_STATE: your own listing, or one that takes\
+            \ no new chats"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/conversations/{conversationId}/messages:
+    get:
+      tags:
+      - Chat
+      summary: "Messages of one conversation, oldest first"
+      description: "No bound: the newest page. before: the page before that id (scroll\
+        \ up). after: the page after that id."
+      operationId: messages
+      parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: before
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: after
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "400":
+          description: "VALIDATION_FAILED: both before and after"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: CONVERSATION_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    post:
+      tags:
+      - Chat
+      summary: "Send a message over REST: the fallback when the socket is down (UC-CH-02\
+        \ A1)"
+      description: 201 for a new message; 200 with the stored message when the same
+        clientMsgId was sent before.
+      operationId: send
+      parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+        required: true
+      responses:
+        "201":
+          description: Stored and delivered
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MessageView"
+        "400":
+          description: "VALIDATION_FAILED: empty text, not 1 to 5 images, a point\
+            \ outside Vietnam | VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: "CONVERSATION_CLOSED: the listing was removed, or a block or\
+            \ sanction; neutral text"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: CONVERSATION_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: "MESSAGE_TOO_LONG | IMAGE_INVALID: not the sender's READY,\
+            \ unused image"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: "CHAT_RATE_LIMITED: more than 30 messages a minute; see Retry-After"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/chat-images/{imageId}/complete:
+    post:
+      tags:
+      - Chat images
+      summary: "Upload done: processing starts; poll the status until READY or REJECTED"
+      description: Calling it again after processing returns the current status. A
+        REJECTED image shows the retry button.
+      operationId: completeUpload_1
+      parameters:
+      - name: imageId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "400":
+          description: "INVALID_IMAGE: nothing was uploaded, or the object is over\
+            \ the limit (it is deleted)"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: "IMAGE_NOT_FOUND: not one of the caller's images"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "202":
+          description: Accepted
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ImageStatusView"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/chat-images/upload-url:
+    post:
+      tags:
+      - Chat images
+      summary: "A presigned PUT URL for one image of a conversation, under the private\
+        \ chat-incoming/ prefix"
+      operationId: requestUploadUrl_1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatImageUploadRequest"
+        required: true
+      responses:
+        "400":
+          description: "INVALID_IMAGE: not JPEG, PNG or WebP (convert HEIC to JPEG),\
+            \ or over 5 242 880 bytes | VALIDATION_FAILED: errors lists each invalid\
+            \ field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: "CONVERSATION_NOT_FOUND: not a member"
           content:
             application/problem+json:
               schema:
@@ -1848,6 +2336,28 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/badges:
+    get:
+      tags:
+      - Notification settings
+      summary: "The two numbers of the bottom navigation: unread chat messages and\
+        \ unread notifications"
+      description: The same counts are pushed on /user/queue/badges to every session
+        of the user.
+      operationId: badges
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/BadgeCounts"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /api/v1/search:
     get:
       tags:
@@ -1989,6 +2499,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
       security: []
+  /api/v1/notifications:
+    get:
+      tags:
+      - Notifications
+      summary: "My notifications, newest first; unread ones have read=false (A29)"
+      operationId: list_1
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "400":
+          description: INVALID_CURSOR
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /api/v1/map/listings:
     get:
       tags:
@@ -2230,6 +2771,90 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
       security: []
+  /api/v1/conversations/{conversationId}:
+    get:
+      tags:
+      - Chat
+      summary: "The header of the chat screen: listing, counterpart and whether sending\
+        \ is open (A18)"
+      operationId: detail_1
+      parameters:
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "404":
+          description: "CONVERSATION_NOT_FOUND: unknown, or not a member"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/conversations/sync:
+    get:
+      tags:
+      - Chat
+      summary: "Everything missed after a reconnect, in id order (FR-CH-07)"
+      description: "Send the id of the last message received; ask again with the last\
+        \ id returned while hasMore is true. An unknown checkpoint is INVALID_CURSOR:\
+        \ reload the newest page of each conversation."
+      operationId: sync
+      parameters:
+      - name: afterMessageId
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "400":
+          description: "INVALID_CURSOR: the checkpoint is above the newest message"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/chat-images/{imageId}:
+    get:
+      tags:
+      - Chat images
+      summary: Status and short-lived links of an image
+      description: The sender sees it from the upload on; the other member only once
+        a message uses it.
+      operationId: status_1
+      parameters:
+      - name: imageId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "404":
+          description: "IMAGE_NOT_FOUND: not a member, or not sent yet"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /api/v1/categories:
     get:
       tags:
@@ -2483,6 +3108,84 @@ components:
       required:
       - currentPassword
       - newPassword
+    UpdatePreferencesRequest:
+      type: object
+      description: Everything on A30; a PUT replaces all of it (FR-NT-03). SYSTEM
+        cannot be turned off
+      properties:
+        chatPush:
+          type: boolean
+        tradePush:
+          type: boolean
+        keywordAlertPush:
+          type: boolean
+        marketingPush:
+          type: boolean
+          description: true only with the PUSH_MARKETING consent
+        systemPush:
+          type: boolean
+          description: "Must be true: SYSTEM and security notices cannot be turned\
+            \ off"
+        dndEnabled:
+          type: boolean
+        dndStart:
+          type: string
+          format: time-local
+          example: 22:00
+        dndEnd:
+          type: string
+          format: time-local
+          description: "May be earlier than the start: the window crosses midnight"
+          example: 07:00
+        timeZone:
+          type: string
+          example: Asia/Ho_Chi_Minh
+          minLength: 1
+        version:
+          type: integer
+          format: int64
+          description: The version read with the preferences; a stale one is 409
+          minimum: 0
+      required:
+      - chatPush
+      - dndEnabled
+      - dndEnd
+      - dndStart
+      - keywordAlertPush
+      - marketingPush
+      - systemPush
+      - timeZone
+      - tradePush
+      - version
+    PreferencesView:
+      type: object
+      properties:
+        chatPush:
+          type: boolean
+        tradePush:
+          type: boolean
+        keywordAlertPush:
+          type: boolean
+        marketingPush:
+          type: boolean
+        systemPush:
+          type: boolean
+        dndEnabled:
+          type: boolean
+        dndStart:
+          type: string
+          example: 22:00
+        dndEnd:
+          type: string
+          example: 07:00
+        timeZone:
+          type: string
+          example: Asia/Ho_Chi_Minh
+        marketingConsentGranted:
+          type: boolean
+        version:
+          type: integer
+          format: int64
     LocationConsentRequest:
       type: object
       properties:
@@ -2741,6 +3444,48 @@ components:
         longitude:
           type: number
           format: double
+    RegisterDeviceRequest:
+      type: object
+      description: The FCM token of this installation (FR-NT-02). Send it after login
+        and whenever FCM rotates it
+      properties:
+        fcmToken:
+          type: string
+          description: Registration token from FirebaseMessaging
+          minLength: 1
+        platform:
+          type: string
+          enum:
+          - ANDROID
+          - WEB
+          example: ANDROID
+          minLength: 1
+        appVersion:
+          type: string
+          example: 1.4.2
+      required:
+      - fcmToken
+      - platform
+    DeviceResponse:
+      type: object
+      description: The device whose token is now registered
+      properties:
+        deviceId:
+          type: string
+        platform:
+          type: string
+    MarkReadRequest:
+      type: object
+      description: The newest message the reader has seen (FR-CH-06); an older marker
+        is ignored
+      properties:
+        lastReadMessageId:
+          type: integer
+          format: int64
+          example: 1042
+          minimum: 0
+      required:
+      - lastReadMessageId
     SelectActiveAreaRequest:
       type: object
       properties:
@@ -2975,6 +3720,251 @@ components:
         contentType:
           type: string
           example: image/jpeg
+        expiresAt:
+          type: string
+          format: date-time
+        maxSizeBytes:
+          type: integer
+          format: int64
+    OpenConversationRequest:
+      type: object
+      description: "Open the conversation about a listing (FR-CH-01, A10 \"Chat\")"
+      properties:
+        listingId:
+          type: string
+          format: uuid
+      required:
+      - listingId
+    ConversationView:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        listing:
+          $ref: "#/components/schemas/ListingBrief"
+        counterpart:
+          $ref: "#/components/schemas/CounterpartBrief"
+        lastMessagePreview:
+          type: string
+        lastMessageAt:
+          type: string
+          format: date-time
+        unreadCount:
+          type: integer
+          format: int32
+          description: Messages after the reader's marker that the counterpart sent
+        sendOpen:
+          type: boolean
+        closedNotice:
+          type: string
+        sortAt:
+          type: string
+          format: date-time
+    CounterpartBrief:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+        deleted:
+          type: boolean
+    ListingBrief:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+          example: ACTIVE
+        priceVnd:
+          type: integer
+          format: int64
+        coverThumbnailUrl:
+          type: string
+    PointRequest:
+      type: object
+      description: "A meeting point chosen on A13 (FR-CH-05), inside Vietnam"
+      properties:
+        latitude:
+          type: number
+          format: double
+          example: 10.7769
+        longitude:
+          type: number
+          format: double
+          example: 106.7009
+        placeName:
+          type: string
+          description: 1 to 100 characters
+          example: Công viên 23/9
+    SendMessageRequest:
+      type: object
+      description: A message to send. TEXT needs body; IMAGE needs imageIds (1 to
+        5 READY images of this conversation); LOCATION needs point. The same clientMsgId
+        is stored once (FR-CH-02)
+      properties:
+        clientMsgId:
+          type: string
+          format: uuid
+          description: Generated by the app for every message; a repeat returns the
+            stored message
+        type:
+          type: string
+          enum:
+          - TEXT
+          - IMAGE
+          - LOCATION
+        body:
+          type: string
+          description: 1 to 1 000 characters
+          example: Còn hàng không bạn?
+        imageIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        point:
+          $ref: "#/components/schemas/PointRequest"
+      required:
+      - clientMsgId
+      - type
+    ImageView:
+      type: object
+      properties:
+        url:
+          type: string
+        thumbnailUrl:
+          type: string
+        width:
+          type: integer
+          format: int32
+        height:
+          type: integer
+          format: int32
+    LocationView:
+      type: object
+      properties:
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        placeName:
+          type: string
+    MessageView:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: "Increases with every message of every conversation: the sync\
+            \ checkpoint (FR-CH-07)"
+          example: 1042
+        conversationId:
+          type: string
+          format: uuid
+        senderId:
+          type: string
+          format: uuid
+          description: Null for SYSTEM messages
+        type:
+          type: string
+          enum:
+          - TEXT
+          - IMAGE
+          - LOCATION
+          - SYSTEM
+        body:
+          type: string
+        images:
+          type: array
+          description: "IMAGE: short-lived download links, usable only by the two\
+            \ members"
+          items:
+            $ref: "#/components/schemas/ImageView"
+        location:
+          $ref: "#/components/schemas/LocationView"
+          description: "LOCATION: the meeting point the two members agreed on"
+        system:
+          $ref: "#/components/schemas/SystemView"
+          description: "SYSTEM: what happened, for the app to style the note"
+        clientMsgId:
+          type: string
+          format: uuid
+          description: The id the sender generated; absent on SYSTEM messages
+        createdAt:
+          type: string
+          format: date-time
+    SystemView:
+      type: object
+      properties:
+        kind:
+          type: string
+        facts:
+          type: object
+          additionalProperties: {}
+    ImageStatusView:
+      type: object
+      properties:
+        imageId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - UPLOADING
+          - READY
+          - REJECTED
+        rejectReason:
+          type: string
+        thumbnailUrl:
+          type: string
+        url:
+          type: string
+    ChatImageUploadRequest:
+      type: object
+      description: "One image to send in a conversation (FR-CH-04, A18)"
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+        contentType:
+          type: string
+          description: "image/jpeg, image/png or image/webp; convert HEIC to JPEG\
+            \ first"
+          example: image/jpeg
+          minLength: 1
+        sizeBytes:
+          type: integer
+          format: int64
+          description: At most 5 242 880 bytes
+          example: 2048000
+          exclusiveMinimum: 0
+      required:
+      - contentType
+      - conversationId
+      - sizeBytes
+    UploadTicket:
+      type: object
+      properties:
+        imageId:
+          type: string
+          format: uuid
+        uploadUrl:
+          type: string
+        uploadMethod:
+          type: string
+        contentType:
+          type: string
         expiresAt:
           type: string
           format: date-time
@@ -3593,6 +4583,17 @@ components:
           type: string
         hasMore:
           type: boolean
+    BadgeCounts:
+      type: object
+      properties:
+        chatUnread:
+          type: integer
+          format: int32
+          example: 3
+        notificationUnread:
+          type: integer
+          format: int32
+          example: 1
     ListingPageResponse:
       type: object
       description: One page of the feed (FR-DC-01) or of a search (FR-DC-02)
@@ -3616,6 +4617,43 @@ components:
         suggestWiderRadius:
           type: boolean
           description: "Nothing found: offer to widen the radius (FR-DC-06)"
+    CursorPageNotificationView:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationView"
+        nextCursor:
+          type: string
+        hasMore:
+          type: boolean
+    NotificationView:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        category:
+          type: string
+          example: TRADE
+        type:
+          type: string
+          example: OFFER_RECEIVED
+        title:
+          type: string
+        body:
+          type: string
+        deepLink:
+          type: string
+        read:
+          type: boolean
+        readAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
     Cluster:
       type: object
       properties:
@@ -3897,6 +4935,26 @@ components:
           type: string
         hasMore:
           type: boolean
+    CursorPageConversationView:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConversationView"
+        nextCursor:
+          type: string
+        hasMore:
+          type: boolean
+    SyncResult:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageView"
+        hasMore:
+          type: boolean
     CategoryResponse:
       type: object
       properties:
@@ -3955,37 +5013,37 @@ components:
         \ (ACCOUNT_SUSPENDED / ACCOUNT_BANNED), nextAllowedAt (NAME_CHANGE_TOO_SOON),\
         \ blockers (ACCOUNT_DELETION_BLOCKED)."
       properties:
+        code:
+          type: string
+          example: OTP_INVALID
+        status:
+          type: integer
+          format: int32
+          example: 422
+        type:
+          type: string
+          example: https://nearby.uit.edu.vn/problems/otp-invalid
+        title:
+          type: string
+          example: Unprocessable Content
         violations:
           type: array
           description: Only for WEAK_PASSWORD
           items:
             type: object
-        title:
-          type: string
-          example: Unprocessable Content
-        type:
-          type: string
-          example: https://nearby.uit.edu.vn/problems/otp-invalid
-        status:
-          type: integer
-          format: int32
-          example: 422
-        code:
-          type: string
-          example: OTP_INVALID
-        detail:
-          type: string
-          example: The code is wrong. 4 attempts left.
         errors:
           type: array
           description: Only for VALIDATION_FAILED
           items:
             type: object
             properties:
-              field:
-                type: string
               message:
                 type: string
+              field:
+                type: string
+        detail:
+          type: string
+          example: The code is wrong. 4 attempts left.
       required:
       - code
       - status

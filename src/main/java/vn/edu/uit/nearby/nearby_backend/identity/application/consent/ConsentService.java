@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import vn.edu.uit.nearby.nearby_backend.identity.MarketingConsent;
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityParameters;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.consent.ConsentChannel;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.consent.ConsentGrant;
@@ -21,7 +22,7 @@ import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
  * decides. Marketing pushes are covered by the Privacy Policy version.
  */
 @Service
-public class ConsentService {
+public class ConsentService implements MarketingConsent {
 
 	private final UserRepository users;
 
@@ -58,6 +59,12 @@ public class ConsentService {
 			.orElseGet(() -> consents.save(UserConsent.grant(userId, new ConsentGrant(ConsentPurpose.PUSH_MARKETING,
 					parameters.privacyVersion(), ConsentChannel.ANDROID), clock.instant())));
 		return ConsentStatus.of(ConsentPurpose.PUSH_MARKETING, current);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public boolean allowsPushMarketing(UUID userId) {
+		return consents.findCurrent(userId, ConsentPurpose.PUSH_MARKETING).filter(UserConsent::isActive).isPresent();
 	}
 
 	@Transactional

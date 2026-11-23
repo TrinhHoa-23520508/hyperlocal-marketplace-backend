@@ -53,6 +53,7 @@ flowchart LR
 
         APP --> P[("PostgreSQL + PostGIS")]
         APP --> R[("Redis")]
+        APP --> MQ[("RabbitMQ (chat relay)")]
         APP --> M
         PR["Prometheus"] --> APP
         G["Grafana"] --> PR
@@ -70,3 +71,4 @@ flowchart LR
 - [Identity API](docs/api/identity-api.md)
 - [Area API](docs/api/area-api.md)
 - [Listing API](docs/api/listing-api.md)
+- [Chat and Notification API](docs/api/chat-api.md) and its [STOMP frame reference](docs/api/chat-stomp.md)

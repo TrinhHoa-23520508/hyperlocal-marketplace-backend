@@ -34,6 +34,18 @@ public final class ApiPaths {
 
 	public static final String POSTING_ELIGIBILITY = LISTINGS_BASE + "/posting-eligibility";
 
+	public static final String CONVERSATIONS_BASE = API_V1 + "/conversations";
+
+	public static final String CHAT_IMAGES_BASE = API_V1 + "/chat-images";
+
+	public static final String NOTIFICATIONS_BASE = API_V1 + "/notifications";
+
+	public static final String BADGES = CURRENT_USER_BASE + "/badges";
+
+	public static final String NOTIFICATION_PREFERENCES = CURRENT_USER_BASE + "/notification-preferences";
+
+	public static final String DEVICES_BASE = API_V1 + "/devices";
+
 	public static final String CATEGORIES = API_V1 + "/categories";
 
 	public static final String FEED = API_V1 + "/feed";

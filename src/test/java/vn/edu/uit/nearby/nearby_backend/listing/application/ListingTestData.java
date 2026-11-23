@@ -17,7 +17,7 @@ import vn.edu.uit.nearby.nearby_backend.areaverification.domain.GpsFix;
 import vn.edu.uit.nearby.nearby_backend.areaverification.domain.GpsReading;
 import vn.edu.uit.nearby.nearby_backend.listing.domain.ItemCondition;
 import vn.edu.uit.nearby.nearby_backend.listing.domain.ListingImage;
-import vn.edu.uit.nearby.nearby_backend.listing.domain.ProcessedImage;
+import vn.edu.uit.nearby.nearby_backend.shared.image.ProcessedImage;
 import vn.edu.uit.nearby.nearby_backend.listing.infrastructure.ListingImageRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.geo.GeoPoint;
 import vn.edu.uit.nearby.nearby_backend.shared.geo.GridSnapper;

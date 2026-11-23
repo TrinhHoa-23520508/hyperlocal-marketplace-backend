@@ -46,3 +46,7 @@ deploy/backups/
 ### JVM crash logs ###
 hs_err_pid*.log
 replay_pid*.log
+
+### Deploy secrets (Firebase service account) ###
+deploy/secrets/*
+!deploy/secrets/.gitkeep

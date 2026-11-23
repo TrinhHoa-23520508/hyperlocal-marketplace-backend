@@ -11,9 +11,12 @@ import vn.edu.uit.nearby.nearby_backend.support.IntegrationTest;
 @IntegrationTest
 class NearbyBackendApplicationTests {
 
-	private static final int DATA_DESIGN_TABLES = 23;
+	private static final int DATA_DESIGN_TABLES = 25;
 
 	private static final int OUTBOX_TABLES = 1;
+
+	/** chat_images is not in the data dictionary (plan DEC-CH-8). */
+	private static final int EXTRA_TABLES = 1;
 
 	@Autowired
 	JdbcTemplate jdbc;
@@ -26,7 +29,7 @@ class NearbyBackendApplicationTests {
 				  AND table_name NOT IN ('flyway_schema_history', 'spatial_ref_sys')
 				""", Integer.class);
 
-		assertThat(tableCount).isEqualTo(DATA_DESIGN_TABLES + OUTBOX_TABLES);
+		assertThat(tableCount).isEqualTo(DATA_DESIGN_TABLES + OUTBOX_TABLES + EXTRA_TABLES);
 	}
 
 	@Test

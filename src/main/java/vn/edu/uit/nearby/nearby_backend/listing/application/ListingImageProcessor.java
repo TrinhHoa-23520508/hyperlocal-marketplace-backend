@@ -1,5 +1,7 @@
 package vn.edu.uit.nearby.nearby_backend.listing.application;
 
+import vn.edu.uit.nearby.nearby_backend.shared.image.ImageTranscoder;
+
 import java.time.Clock;
 import java.util.UUID;
 
@@ -7,12 +9,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.extern.slf4j.Slf4j;
-import vn.edu.uit.nearby.nearby_backend.listing.application.ImageTranscoder.TranscodedImage;
-import vn.edu.uit.nearby.nearby_backend.listing.domain.ImageFormat;
-import vn.edu.uit.nearby.nearby_backend.listing.domain.ImageRejectReason;
+import vn.edu.uit.nearby.nearby_backend.shared.image.ImageTranscoder.TranscodedImage;
+import vn.edu.uit.nearby.nearby_backend.shared.image.ImageFormat;
+import vn.edu.uit.nearby.nearby_backend.shared.image.ImageRejectReason;
 import vn.edu.uit.nearby.nearby_backend.listing.domain.ListingImage;
-import vn.edu.uit.nearby.nearby_backend.listing.domain.ProcessedImage;
-import vn.edu.uit.nearby.nearby_backend.listing.domain.UnusableImageException;
+import vn.edu.uit.nearby.nearby_backend.shared.image.ProcessedImage;
+import vn.edu.uit.nearby.nearby_backend.shared.image.UnusableImageException;
 import vn.edu.uit.nearby.nearby_backend.listing.infrastructure.ListingImageRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.constant.StorageKeyPrefixes;
 import vn.edu.uit.nearby.nearby_backend.shared.storage.ImageStorage;

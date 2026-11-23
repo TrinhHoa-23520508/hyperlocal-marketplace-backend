@@ -13,9 +13,12 @@ import vn.edu.uit.nearby.nearby_backend.shared.geo.GeoPoint;
  * @param areaId the seller's area the listing belongs to, for {@code InteractionRange}
  * @param publicPoint the blurred location (FR-LS-03)
  * @param reservedTransactionId the ACCEPTED transaction holding a RESERVED listing
+ * @param coverThumbnailUrl short-lived download URL of the 320 px cover, null when the
+ * listing has no image (the app shows a placeholder)
  */
 public record ListingSnapshot(UUID id, UUID sellerId, UUID areaId, String title, String status, long priceVnd,
-		boolean acceptOffers, GeoPoint publicPoint, @Nullable UUID reservedTransactionId) {
+		boolean acceptOffers, GeoPoint publicPoint, @Nullable UUID reservedTransactionId,
+		@Nullable String coverThumbnailUrl) {
 
 	public static final String ACTIVE = "ACTIVE";
 

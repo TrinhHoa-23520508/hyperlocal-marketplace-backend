@@ -3,10 +3,15 @@ package vn.edu.uit.nearby.nearby_backend.listing.application;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,11 +42,14 @@ public class ListingModuleApi
 
 	private final ListingEvents events;
 
+	private final ListingImageUrls imageUrls;
+
 	private final Clock clock;
 
-	ListingModuleApi(ListingRepository listings, ListingEvents events, Clock clock) {
+	ListingModuleApi(ListingRepository listings, ListingEvents events, ListingImageUrls imageUrls, Clock clock) {
 		this.listings = listings;
 		this.events = events;
+		this.imageUrls = imageUrls;
 		this.clock = clock;
 	}
 
@@ -49,9 +57,25 @@ public class ListingModuleApi
 	@Transactional(readOnly = true)
 	public Optional<ListingSnapshot> find(UUID listingId) {
 		return listings.findById(listingId)
-			.map(listing -> new ListingSnapshot(listing.getId(), listing.getSellerId(), listing.getAreaId(),
-					listing.getTitle(), listing.getStatus().name(), listing.getPrice(), listing.isAcceptOffers(),
-					listing.publicPoint(), listing.getReservedTransactionId()));
+			.map(listing -> snapshotOf(listing, imageUrls.coverThumbnails(List.of(listingId)).get(listingId)));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Map<UUID, ListingSnapshot> findAll(Collection<UUID> listingIds) {
+		if (listingIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<UUID, String> covers = imageUrls.coverThumbnails(listingIds);
+		return listings.findAllById(listingIds)
+			.stream()
+			.collect(Collectors.toMap(Listing::getId, listing -> snapshotOf(listing, covers.get(listing.getId()))));
+	}
+
+	private static ListingSnapshot snapshotOf(Listing listing, @Nullable String coverThumbnailUrl) {
+		return new ListingSnapshot(listing.getId(), listing.getSellerId(), listing.getAreaId(), listing.getTitle(),
+				listing.getStatus().name(), listing.getPrice(), listing.isAcceptOffers(), listing.publicPoint(),
+				listing.getReservedTransactionId(), coverThumbnailUrl);
 	}
 
 	@Override

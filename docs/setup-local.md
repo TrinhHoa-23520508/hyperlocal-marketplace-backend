@@ -43,6 +43,11 @@ Key variables:
 | `MAIL_FROM` | `Nearby <no-reply@nearby.local>` | Sender. With Gmail use the same address as `MAIL_USERNAME`. |
 | `EMAIL_VERIFICATION_URL` / `PASSWORD_RESET_URL` | `nearby://...` | Links in account emails. The token is appended as `?token=...`. |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | `admin@nearby.local` / `Nearby2026` | First admin account, created on startup if no account uses the email yet. |
+| `WS_RELAY_ENABLED` | `true` | `true`: chat goes through the RabbitMQ STOMP relay, so two backend instances can reach each other's users. `false`: an in-memory broker, correct for one instance only (section 9.1). |
+| `RABBITMQ_HOST` / `RABBITMQ_STOMP_PORT` / `RABBITMQ_USER` / `RABBITMQ_PASSWORD` / `RABBITMQ_VHOST` | `localhost` / `61613` / `nearby` / `nearby-secret` / `/` | Where the backend finds the STOMP port of RabbitMQ. |
+| `RABBITMQ_AMQP_PORT` / `RABBITMQ_MANAGEMENT_PORT` | `5672` / `15672` | Host ports of the RabbitMQ container (management UI at `http://localhost:15672`). |
+| `FCM_CREDENTIALS` | empty | Path of the Firebase service account JSON file. Empty: pushes are only logged and marked `SKIPPED` (section 9.2). |
+| `FCM_BASE_URL` / `FCM_TIMEOUT` | `https://fcm.googleapis.com` / `5s` | FCM host (changed only by tests) and the longest one push may take. |
 
 OTP limits (`otp.ttl_s`, `otp.max_attempts`, `otp.resend_s`, `otp.max_per_day`) and policy versions (`consent.terms_version`, `consent.privacy_version`) are runtime parameters in the `app_parameters` table, seeded by Flyway, not environment variables.
 
@@ -192,6 +197,10 @@ The configuration is shared with production: `deploy/prometheus/alerts.yml` (rul
 | `checkFormatMain FAILED` | Code is not formatted. | `./gradlew format` |
 | Browser shows a CORS error | The page's origin is not in `CORS_ALLOWED_ORIGINS`. | Add the exact origin (scheme, host and port) and restart the app. |
 | Prometheus target `nearby-backend` is DOWN | The backend is not running on port 8080 of the host. | Start the app; on Linux Docker Engine check that `host-gateway` is supported (Docker 20.10+). |
+| Log shows `TCP connection failure in session _system_` or `BrokerAvailabilityEvent[available=false` | RabbitMQ is not running, or its STOMP plugin is off. | `docker compose up -d rabbitmq`, then `docker compose exec rabbitmq rabbitmq-plugins list -e` must show `rabbitmq_stomp`. Without RabbitMQ set `WS_RELAY_ENABLED=false`. |
+| A user on instance B never receives a message sent on instance A | Instance A or B runs with `WS_RELAY_ENABLED=false`. | Set it to `true` on every instance. |
+| Log shows `FCM refused the push with status 401` or `403` | The service account is for another Firebase project, or the Firebase Cloud Messaging API is off. | Download a new key from the right project and enable *Firebase Cloud Messaging API* in Google Cloud. |
+| Notifications show `push_status = SKIPPED` | `FCM_CREDENTIALS` is empty, the user has no device token, the category is switched off, or it is quiet hours. | Section 9.2. |
 
 ## 8. Useful Docker commands
 
@@ -201,5 +210,61 @@ docker compose logs -f postgres   # follow logs
 docker compose down               # stop, keep data
 docker compose down -v            # stop and DELETE local data
 ```
+
+## 9. RabbitMQ (chat relay) and Firebase (push)
+
+Every new technology the backend needs gets a manual setup and a manual test here, written so that a new developer can do both without asking anyone. Each section says what it is for, how to set it up, how to test it by hand, what a good result looks like, and what was really run.
+
+### 9.1 RabbitMQ: the chat STOMP relay (FR-CH-02, NFR-20, ADR-13)
+
+**What it is for.** Chat messages travel over STOMP. With two backend instances, a message sent on instance A must reach a user connected to instance B. RabbitMQ with its STOMP plugin is the broker both instances share. Tests that run one instance use an in-memory broker instead.
+
+**Setup.**
+
+1. `docker compose up -d rabbitmq` (it starts with the other services when you run the app from IntelliJ or `./gradlew bootRun`). The compose file enables the `rabbitmq_stomp` plugin and creates the user `nearby` / `nearby-secret`.
+2. Keep `WS_RELAY_ENABLED=true` (the default). Nothing else to configure locally.
+3. For production put the host, port and credentials in `RABBITMQ_*`; the backend needs the **STOMP** port (61613), not AMQP (5672).
+
+**Manual test.**
+
+```sh
+docker compose ps rabbitmq                                    # State: running
+docker compose exec rabbitmq rabbitmq-plugins list -e         # a line starts with [E*] and ends with rabbitmq_stomp
+(echo > /dev/tcp/localhost/61613) && echo "STOMP port is open"  # Git Bash
+./gradlew bootRun
+```
+
+In the backend log expect, in this order: `StompBrokerRelayMessageHandler : Started.`, then `"System" session connected.`, then `BrokerAvailabilityEvent[available=true`. Open `http://localhost:15672` (user `nearby`, password `nearby-secret`) and under *Connections* a connection from the backend appears. To prove it across instances, start a second instance on another port (`SERVER_PORT=8081 ./gradlew bootRun` in another terminal), connect two STOMP clients (one to each port) and send a message from one: the other receives it. The automated version of this test is `ChatRelayIntegrationTests` (two instances and a real RabbitMQ container).
+
+**Verified.** The compose service, the plugin list, the open STOMP port and the relay connecting from `bootRun` were run on 2026-11-23. The two-instance test passes in CI. Not run by hand: two `bootRun` instances side by side.
+
+### 9.2 Firebase Cloud Messaging: real push (FR-NT-02)
+
+**What it is for.** When a user has no open socket, a message or event becomes a push on their phone. FCM HTTP v1 sends it. With no credentials the backend still creates the in-app notification and marks the push `SKIPPED`.
+
+**Setup.**
+
+1. In the [Firebase console](https://console.firebase.google.com) create a project (or use the Android team's), and add the Android app (its package name must match).
+2. *Project settings → Service accounts → Generate new private key* gives a JSON file. Keep it **outside the repository** (for example `D:/secrets/nearby-fcm.json`); never commit it.
+3. In `.env` set `FCM_CREDENTIALS=D:/secrets/nearby-fcm.json` and restart the backend. The project id is read from the file.
+4. In Google Cloud, for the same project, check that *Firebase Cloud Messaging API* is enabled.
+5. The Android app puts `google-services.json` of the same project in its module and calls `PUT /api/v1/devices/{deviceId}` with the token after login (see `docs/api/chat-api.md`, flow FC8).
+
+**Manual test.**
+
+1. Log in as user A on the phone (or register through the API) and register the device token: `PUT /api/v1/devices/{deviceId}` with `{"fcmToken": "<real token>", "platform": "ANDROID"}`.
+2. Make sure A has no open socket (close the app or the STOMP client).
+3. Cause an event for A: another user sends A a chat message, or register a new account and use *its* phone (the welcome notification is a push too).
+4. The phone shows the push; tapping it opens the `deepLink`. In the database:
+
+```sh
+docker compose exec postgres psql -U nearby -d nearby -c "select type, push_status, pushed_at from notifications order by created_at desc limit 5"
+```
+
+Expect `push_status = SENT` for the push. Other values: `SKIPPED` (no credentials, no token, category off, quiet hours), `FAILED` (FCM refused or timed out; see the backend log line `FCM`), `PENDING` (only for a moment).
+
+5. Dead tokens: register a made-up token such as `fake-token`; the first push to it makes FCM answer 404 or 400 and the row in `device_tokens` is deleted. The in-app notification stays.
+
+**Verified.** Without credentials (`FCM_CREDENTIALS` empty) the flow was run on 2026-11-23 against the running backend: registering an account created the welcome notification, `GET /users/me/badges` showed `notificationUnread: 1`, and `PUT /devices/{id}` stored a token. A real push to a real phone was **not** run, because it needs a Firebase project and a device; the FCM calls are covered against a stub server by `FcmPushGatewayTests`.
 
 For production deployment, see [deploy/README.md](../deploy/README.md).

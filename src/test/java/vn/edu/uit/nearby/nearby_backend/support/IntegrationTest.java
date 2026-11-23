@@ -13,11 +13,12 @@ import vn.edu.uit.nearby.nearby_backend.TestcontainersConfiguration;
 
 /**
  * Every integration test uses this exact configuration so they share one cached Spring
- * context and one set of containers.
+ * context and one set of containers. They use the in-memory STOMP broker; the broker
+ * relay has its own test with a RabbitMQ container.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-@SpringBootTest
+@SpringBootTest(properties = "app.websocket.relay.enabled=false")
 @AutoConfigureMockMvc
 @Import({ TestcontainersConfiguration.class, ProbeController.class, RecordingAccountMailer.class,
 		RecordingSmsSender.class, InMemoryImageStorage.class })

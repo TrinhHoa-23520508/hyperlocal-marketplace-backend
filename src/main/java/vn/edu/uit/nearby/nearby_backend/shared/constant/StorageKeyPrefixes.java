@@ -14,6 +14,17 @@ public final class StorageKeyPrefixes {
 	 */
 	public static final String LISTING_IMAGES = "listing-images/";
 
+	/**
+	 * Private originals of chat images, never served (FR-CH-04).
+	 */
+	public static final String CHAT_INCOMING = "chat-incoming/";
+
+	/**
+	 * Metadata-free WebP derivatives of chat images, served only through short-lived
+	 * signed URLs to the two members (FR-CH-04, NFR-31).
+	 */
+	public static final String CHAT_IMAGES = "chat-images/";
+
 	private StorageKeyPrefixes() {
 	}
 

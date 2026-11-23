@@ -30,6 +30,16 @@ public final class RedisKeyPrefixes {
 
 	public static final String LISTING_VIEWS = "listing-views:";
 
+	/**
+	 * Per user, the STOMP session ids that are connected now (FR-NT-01 "ngoại tuyến").
+	 */
+	public static final String CHAT_PRESENCE = "presence:";
+
+	/**
+	 * Per user, the message counter of the current minute (FR-CH-03).
+	 */
+	public static final String CHAT_MESSAGE_RATE = "chat-rate:";
+
 	private RedisKeyPrefixes() {
 	}
 
