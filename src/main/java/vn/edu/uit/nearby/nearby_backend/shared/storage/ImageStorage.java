@@ -22,6 +22,18 @@ public interface ImageStorage {
 
 	void delete(String objectKey);
 
+	/**
+	 * Reads a whole object; used by the image pipeline on originals of at most
+	 * {@code image.max_bytes}.
+	 * @return empty when nothing is stored under that key
+	 */
+	Optional<byte[]> read(String objectKey);
+
+	/**
+	 * Stores an object the backend produced itself, such as a processed image derivative.
+	 */
+	void store(String objectKey, byte[] content, String contentType);
+
 	record PresignedUrl(String url, String method, Instant expiresAt) {
 	}
 

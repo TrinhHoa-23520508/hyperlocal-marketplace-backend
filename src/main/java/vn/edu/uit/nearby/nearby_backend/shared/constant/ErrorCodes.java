@@ -124,6 +124,26 @@ public final class ErrorCodes {
 
 	public static final String TRADING_GATE_FAILED = "TRADING_GATE_FAILED";
 
+	public static final String LISTING_NOT_FOUND = "LISTING_NOT_FOUND";
+
+	public static final String INVALID_LISTING_STATE = "INVALID_LISTING_STATE";
+
+	public static final String IMAGE_INVALID = "IMAGE_INVALID";
+
+	public static final String IMAGE_NOT_FOUND = "IMAGE_NOT_FOUND";
+
+	public static final String CATEGORY_INACTIVE = "CATEGORY_INACTIVE";
+
+	public static final String LISTING_DAILY_LIMIT = "LISTING_DAILY_LIMIT";
+
+	public static final String LISTING_OPEN_LIMIT = "LISTING_OPEN_LIMIT";
+
+	public static final String LISTING_HAS_OPEN_TRANSACTIONS = "LISTING_HAS_OPEN_TRANSACTIONS";
+
+	public static final String BUMP_TOO_SOON = "BUMP_TOO_SOON";
+
+	public static final String BUMP_LIMIT_REACHED = "BUMP_LIMIT_REACHED";
+
 	private ErrorCodes() {
 	}
 

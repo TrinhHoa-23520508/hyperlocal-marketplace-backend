@@ -1,5 +1,7 @@
 package vn.edu.uit.nearby.nearby_backend.shared.storage;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.time.Clock;
 import java.util.Map;
 import java.util.Optional;
@@ -11,9 +13,11 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 
 import io.minio.BucketExistsArgs;
+import io.minio.GetObjectArgs;
 import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
+import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
 import io.minio.StatObjectArgs;
 import io.minio.StatObjectResponse;
@@ -79,6 +83,38 @@ public class MinioImageStorage implements ImageStorage {
 		}
 		catch (Exception ex) {
 			throw new StorageException("Failed to delete " + objectKey, ex);
+		}
+	}
+
+	@Override
+	public Optional<byte[]> read(String objectKey) {
+		try (InputStream content = internalClient
+			.getObject(GetObjectArgs.builder().bucket(properties.bucket()).object(objectKey).build())) {
+			return Optional.of(content.readAllBytes());
+		}
+		catch (ErrorResponseException ex) {
+			if (NO_SUCH_KEY.equals(ex.errorResponse().code())) {
+				return Optional.empty();
+			}
+			throw new StorageException("Failed to read " + objectKey, ex);
+		}
+		catch (Exception ex) {
+			throw new StorageException("Failed to read " + objectKey, ex);
+		}
+	}
+
+	@Override
+	public void store(String objectKey, byte[] content, String contentType) {
+		try {
+			internalClient.putObject(PutObjectArgs.builder()
+				.bucket(properties.bucket())
+				.object(objectKey)
+				.stream(new ByteArrayInputStream(content), content.length, -1)
+				.contentType(contentType)
+				.build());
+		}
+		catch (Exception ex) {
+			throw new StorageException("Failed to store " + objectKey, ex);
 		}
 	}
 

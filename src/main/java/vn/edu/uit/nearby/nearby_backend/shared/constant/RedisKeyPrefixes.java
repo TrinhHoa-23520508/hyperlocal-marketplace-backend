@@ -28,6 +28,8 @@ public final class RedisKeyPrefixes {
 
 	public static final String AREA_DAILY_ATTEMPTS = "area-attempts:";
 
+	public static final String LISTING_VIEWS = "listing-views:";
+
 	private RedisKeyPrefixes() {
 	}
 

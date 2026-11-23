@@ -17,7 +17,7 @@ import vn.edu.uit.nearby.nearby_backend.identity.ProfileArea;
 import vn.edu.uit.nearby.nearby_backend.identity.ProfileAreas;
 import vn.edu.uit.nearby.nearby_backend.identity.application.IdentityParameters;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.EmailAddress;
-import vn.edu.uit.nearby.nearby_backend.identity.domain.ImageUploadPolicy;
+import vn.edu.uit.nearby.nearby_backend.shared.storage.ImageUploadPolicy;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.PhoneNumber;
 import vn.edu.uit.nearby.nearby_backend.identity.domain.User;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;

@@ -22,6 +22,9 @@ repositories {
 extra["springModulithVersion"] = "2.1.1"
 val springdocVersion = "3.1.1"
 val minioVersion = "8.6.0"
+// Listing image pipeline (DEC-LS-4): JPEG decoding beyond the JDK, WebP decoding and encoding (bundled libwebp)
+val twelveMonkeysVersion = "3.15.3"
+val webpImageIoVersion = "0.11.0"
 
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
@@ -40,6 +43,8 @@ dependencies {
 	implementation("org.hibernate.orm:hibernate-spatial")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocVersion")
 	implementation("io.minio:minio:$minioVersion")
+	implementation("com.twelvemonkeys.imageio:imageio-jpeg:$twelveMonkeysVersion")
+	implementation("com.github.usefulness:webp-imageio:$webpImageIoVersion")
 	compileOnly("org.projectlombok:lombok")
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 	developmentOnly("org.springframework.boot:spring-boot-docker-compose")

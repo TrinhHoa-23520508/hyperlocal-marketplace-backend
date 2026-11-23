@@ -1,4 +1,4 @@
-package vn.edu.uit.nearby.nearby_backend.identity.domain;
+package vn.edu.uit.nearby.nearby_backend.shared.storage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;

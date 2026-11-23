@@ -8,6 +8,8 @@ This contract covers SRS section 3.1: FR-ID-01 to FR-ID-05, FR-ID-07 to FR-ID-09
 |---|---|---|
 | 2026-11-22 | `homeArea` is removed from `GET /users/me`, `PUT /users/me` and every other response; the `users.home_area` and `users.verified_area_count` columns are dropped (migration V13, decision DEC-AR-4). It was an unverified copy of the area, which the SRS does not have. `PUT /users/me` ignores a `homeArea` that is still sent | Stop sending and reading `homeArea`. Read the areas from `areas[]` on `GET /users/me` (FR-ID-12) or from `GET /areas/me`; change them only through the [Area API](area-api.md) |
 | 2026-11-22 | `GET /users/me` adds `areas[]`; `GET /users/{userId}` adds `localityName` | Additive: show them on A31 and A11 |
+| 2026-11-22 | A query or path value of the wrong type (such as an unknown enum name) and a violated query-parameter constraint now answer `400 VALIDATION_FAILED` with `errors[]`, on every module (before: a `400` without `code`) | Additive: show `errors[]` as for body validation |
+| 2026-11-22 | The seller's active listings for A11 are at `GET /users/{userId}/listings` ([Listing API](listing-api.md#fl9-a-sellers-listings-on-the-public-profile-fr-id-13-a11)) | Additive |
 
 ## Conventions
 

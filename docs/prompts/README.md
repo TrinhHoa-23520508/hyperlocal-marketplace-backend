@@ -4,7 +4,7 @@ Hướng dẫn dùng AI (Claude Code, Cursor, Copilot...) để viết app Andro
 
 | Ứng dụng | Prompt | Luồng nghiệp vụ dùng |
 |---|---|---|
-| Android cho người dùng (Kotlin, Compose) | [`android-user-app.md`](android-user-app.md) | F1–F12 và F15 (cổng giao dịch) trong [`../api/identity-api.md`](../api/identity-api.md#business-flows-per-screen); FA1–FA5 (khu vực, A27/A28) trong [`../api/area-api.md`](../api/area-api.md#business-flows-per-screen) |
+| Android cho người dùng (Kotlin, Compose) | [`android-user-app.md`](android-user-app.md) | F1–F12 và F15 (cổng giao dịch) trong [`../api/identity-api.md`](../api/identity-api.md#business-flows-per-screen); FA1–FA5 (khu vực, A27/A28) trong [`../api/area-api.md`](../api/area-api.md#business-flows-per-screen); FL1–FL9 (tin đăng, bảng tin, tìm kiếm, bản đồ, chi tiết, yêu thích; A06–A15) trong [`../api/listing-api.md`](../api/listing-api.md#business-flows-per-screen) |
 | Web admin (React, Vite, TypeScript) | [`admin-web.md`](admin-web.md) | F13–F14 |
 
 SRS không có web cho người dùng: người dùng chỉ dùng app Android. Đừng vibe code web user.
@@ -16,9 +16,9 @@ AI chỉ làm đúng khi có đủ thông tin. Đưa **đủ** những thứ tro
 | # | Context | Lấy ở đâu | Vì sao cần |
 |---|---|---|---|
 | 1 | File prompt của ứng dụng | `docs/prompts/android-user-app.md` hoặc `admin-web.md` | Vai trò, stack, phạm vi, quy tắc, tiêu chí nghiệm thu |
-| 2 | Luồng nghiệp vụ của tính năng đang làm | Mục *Business flows per screen* trong `docs/api/identity-api.md` hoặc `docs/api/area-api.md` (chỉ chép các luồng F/FA liên quan) | Màn hình nào gọi API nào, theo thứ tự nào, xử lý từng mã lỗi ra sao |
+| 2 | Luồng nghiệp vụ của tính năng đang làm | Mục *Business flows per screen* trong `docs/api/identity-api.md`, `docs/api/area-api.md` hoặc `docs/api/listing-api.md` (chỉ chép các luồng F/FA/FL liên quan) | Màn hình nào gọi API nào, theo thứ tự nào, xử lý từng mã lỗi ra sao |
 | 3 | OpenAPI | `docs/api/openapi.yml` | Kiểu dữ liệu chính xác để sinh code gọi API và model; mọi mã lỗi theo endpoint |
-| 4 | Chi tiết endpoint | Các mục chi tiết endpoint trong `docs/api/identity-api.md` hoặc `docs/api/area-api.md` | Ràng buộc field, tác dụng phụ, máy trạng thái |
+| 4 | Chi tiết endpoint | Các mục chi tiết endpoint trong `docs/api/identity-api.md`, `docs/api/area-api.md` hoặc `docs/api/listing-api.md` | Ràng buộc field, tác dụng phụ, máy trạng thái |
 | 5 | Mô tả màn hình trong SRS | `docs-local/SRS_Hyperlocal_Marketplace.pdf`: Bảng 61 (A01–A37, W01–W16) và mục FR của tính năng (3.1 cho định danh) | Nội dung và mục đích từng màn hình; bản prompt chỉ tóm tắt |
 | 6 | Quy tắc code | Android: `.claude/clean-code-skill/references/06-android-kotlin.md` và `01-clean-code-principles.md`. Web: phần *Tech stack* và *Project structure* trong `admin-web.md` | Giữ cùng kiến trúc và chuẩn test với backend |
 | 7 | Design | Figma, bộ màu, logo, font (nếu có). Không có thì dùng phần *Design direction* trong prompt | Giao diện thống nhất |
@@ -64,7 +64,7 @@ docker compose up -d          # Postgres, Redis, MinIO
 | Android emulator gọi backend | Base URL `http://10.0.2.2:8080`; ảnh: `MINIO_PUBLIC_ENDPOINT=http://10.0.2.2:9000` |
 | Điện thoại thật | Base URL `http://<IP-LAN>:8080`; `MINIO_PUBLIC_ENDPOINT=http://<IP-LAN>:9000`; cho phép cleartext HTTP trong bản debug |
 | Web admin | Chạy Vite ở cổng 5173 (đã nằm trong `CORS_ALLOWED_ORIGINS`) |
-| Gọi thử bằng tay | Import `docs/postman/nearby-identity.postman_collection.json` |
+| Gọi thử bằng tay | Import `docs/postman/nearby-identity.postman_collection.json`, rồi `nearby-area` và `nearby-listing` |
 | Xem metric khi thử tải | `docker compose --profile monitoring up -d prometheus grafana`, Grafana http://localhost:3000 |
 
 ## 4. Lỗi hay gặp khi vibe code
