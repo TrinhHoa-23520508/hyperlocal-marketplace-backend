@@ -54,7 +54,7 @@ class SellerReputationTests {
 	@DisplayName("FR-CH-01 / FR-TX-01: RESERVED takes chats but not offers; free means price 0")
 	void snapshotTellsWhatTheListingTakes() {
 		ListingSnapshot reserved = new ListingSnapshot(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "Ghế",
-				"RESERVED", 0, true, new GeoPoint(10, 106), UUID.randomUUID());
+				"RESERVED", 0, true, new GeoPoint(10, 106), UUID.randomUUID(), null);
 
 		assertThat(reserved.takesNewChats()).isTrue();
 		assertThat(reserved.takesNewOffers()).isFalse();

@@ -14,10 +14,22 @@ import vn.edu.uit.nearby.nearby_backend.shared.constant.WebSocketDestinations;
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
+	/**
+	 * Replicas tell each other which user sessions they hold, so a message for a user is
+	 * routed to the replica where that user is connected.
+	 */
+	static final String USER_REGISTRY_BROADCAST = WebSocketDestinations.TOPIC_PREFIX + "/user-registry";
+
+	static final String UNRESOLVED_USER_DESTINATION_BROADCAST = WebSocketDestinations.TOPIC_PREFIX
+			+ "/unresolved-user-destination";
+
 	private final StompAuthChannelInterceptor stompAuthChannelInterceptor;
 
-	public WebSocketConfig(StompAuthChannelInterceptor stompAuthChannelInterceptor) {
+	private final WebSocketRelayProperties relay;
+
+	public WebSocketConfig(StompAuthChannelInterceptor stompAuthChannelInterceptor, WebSocketRelayProperties relay) {
 		this.stompAuthChannelInterceptor = stompAuthChannelInterceptor;
+		this.relay = relay;
 	}
 
 	@Override
@@ -28,8 +40,22 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
 	@Override
 	public void configureMessageBroker(MessageBrokerRegistry registry) {
-		// Single-instance broker; Architecture Design 8.1 covers the relay option.
-		registry.enableSimpleBroker(WebSocketDestinations.TOPIC_PREFIX, WebSocketDestinations.QUEUE_PREFIX);
+		if (relay.enabled()) {
+			registry.enableStompBrokerRelay(WebSocketDestinations.TOPIC_PREFIX, WebSocketDestinations.QUEUE_PREFIX)
+				.setRelayHost(relay.host())
+				.setRelayPort(relay.port())
+				.setClientLogin(relay.clientLogin())
+				.setClientPasscode(relay.clientPasscode())
+				.setSystemLogin(relay.systemLogin())
+				.setSystemPasscode(relay.systemPasscode())
+				.setVirtualHost(relay.virtualHost())
+				.setUserRegistryBroadcast(USER_REGISTRY_BROADCAST)
+				.setUserDestinationBroadcast(UNRESOLVED_USER_DESTINATION_BROADCAST);
+		}
+		else {
+			// One instance only: tests and a single-node development run.
+			registry.enableSimpleBroker(WebSocketDestinations.TOPIC_PREFIX, WebSocketDestinations.QUEUE_PREFIX);
+		}
 		registry.setApplicationDestinationPrefixes(WebSocketDestinations.APPLICATION_PREFIX);
 		registry.setUserDestinationPrefix(WebSocketDestinations.USER_PREFIX);
 	}

@@ -1,5 +1,9 @@
 package vn.edu.uit.nearby.nearby_backend.listing.domain;
 
+import vn.edu.uit.nearby.nearby_backend.shared.image.ProcessedImage;
+
+import vn.edu.uit.nearby.nearby_backend.shared.image.ImageRejectReason;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static vn.edu.uit.nearby.nearby_backend.listing.domain.ListingFixtures.NOW;

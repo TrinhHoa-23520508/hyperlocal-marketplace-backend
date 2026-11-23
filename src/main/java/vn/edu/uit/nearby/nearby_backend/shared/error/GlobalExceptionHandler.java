@@ -1,6 +1,5 @@
 package vn.edu.uit.nearby.nearby_backend.shared.error;
 
-import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
@@ -38,10 +38,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
 	@ExceptionHandler(BusinessException.class)
 	ResponseEntity<ProblemDetail> handleBusiness(BusinessException ex) {
-		HttpStatus status = statusOf(ex);
-		ProblemDetail problem = problem(status, ex.getCode(), ex.getMessage());
-		ex.getProperties().forEach(problem::setProperty);
-		ResponseEntity.BodyBuilder response = ResponseEntity.status(status);
+		ProblemDetail problem = ProblemDetails.of(ex);
+		ResponseEntity.BodyBuilder response = ResponseEntity.status(ProblemDetails.statusOf(ex));
 		if (ex instanceof RateLimitExceededException rateLimited) {
 			rateLimited.getRetryAfter()
 				.ifPresent(retryAfter -> response.header(HttpHeaders.RETRY_AFTER, retryAfterSeconds(retryAfter)));
@@ -102,6 +100,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	}
 
 	/**
+	 * A required query parameter that was not sent.
+	 */
+	@Override
+	protected @Nullable ResponseEntity<Object> handleMissingServletRequestParameter(
+			MissingServletRequestParameterException ex, HttpHeaders headers, HttpStatusCode status,
+			WebRequest request) {
+		return validationFailed(ex,
+				List.of(Map.of("field", ex.getParameterName(), "message", "This parameter is required.")), headers,
+				request);
+	}
+
+	/**
 	 * A constraint on a {@code @RequestParam} or {@code @PathVariable}.
 	 */
 	@Override
@@ -125,19 +135,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		return handleExceptionInternal(ex, problem, headers, HttpStatus.BAD_REQUEST, request);
 	}
 
-	private static HttpStatus statusOf(BusinessException ex) {
-		return switch (ex) {
-			case ResourceNotFoundException e -> HttpStatus.NOT_FOUND;
-			case ConflictException e -> HttpStatus.CONFLICT;
-			case InvalidRequestException e -> HttpStatus.BAD_REQUEST;
-			case OperationNotAllowedException e -> HttpStatus.FORBIDDEN;
-			case RateLimitExceededException e -> HttpStatus.TOO_MANY_REQUESTS;
-			case AuthenticationFailedException e -> HttpStatus.UNAUTHORIZED;
-			case UnprocessableRequestException e -> HttpStatus.UNPROCESSABLE_CONTENT;
-			case ServiceUnavailableException e -> HttpStatus.SERVICE_UNAVAILABLE;
-		};
-	}
-
 	private static String retryAfterSeconds(Duration retryAfter) {
 		return String.valueOf(Math.max(1, retryAfter.toSeconds()));
 	}
@@ -151,10 +148,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	}
 
 	private static ProblemDetail problem(HttpStatus status, String code, String detail) {
-		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
-		problem.setType(URI.create(ErrorCodes.PROBLEM_TYPE_BASE + code.toLowerCase().replace('_', '-')));
-		problem.setProperty("code", code);
-		return problem;
+		return ProblemDetails.of(status, code, detail);
 	}
 
 }

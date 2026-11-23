@@ -107,6 +107,20 @@ class ListingModuleApiIntegrationTests {
 			assertThat(lookup.find(UUID.randomUUID())).isEmpty();
 		}
 
+		@Test
+		@DisplayName("D9 / A17: findAll answers many listings at once, without a cover when there is no image")
+		void describesManyListings() {
+			Listing deleted = listings.save(ListingFixtures.aListing(ListingStatus.DELETED));
+			UUID unknown = UUID.randomUUID();
+
+			var snapshots = lookup.findAll(List.of(listing.getId(), deleted.getId(), unknown));
+
+			assertThat(snapshots).containsOnlyKeys(listing.getId(), deleted.getId());
+			assertThat(snapshots.get(deleted.getId()).status()).isEqualTo("DELETED");
+			assertThat(snapshots.get(listing.getId()).coverThumbnailUrl()).isNull();
+			assertThat(lookup.findAll(List.of())).isEmpty();
+		}
+
 	}
 
 	@Nested

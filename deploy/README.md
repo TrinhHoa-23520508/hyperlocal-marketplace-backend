@@ -12,6 +12,13 @@ docker compose up -d
 
 Point two DNS records at the VM: `API_DOMAIN` (REST, WebSocket `/ws`, Grafana `/grafana/`) and `STORAGE_DOMAIN` (MinIO, used for presigned image URLs).
 
+## RabbitMQ and push notifications
+
+- **RabbitMQ** carries chat messages between app instances (STOMP relay, ADR-13). It starts with the stack, is not published outside the compose network and keeps its data in the `rabbitmqdata` volume. Set `RABBITMQ_USER` and `RABBITMQ_PASSWORD` in `.env`. Check it after the first start: `docker compose exec rabbitmq rabbitmq-plugins list -e` shows `rabbitmq_stomp`, and the app log has `StompBrokerRelayMessageHandler : "System" session connected.` Manual setup and test steps: [docs/setup-local.md, section 9.1](../docs/setup-local.md#91-rabbitmq-the-chat-stomp-relay-fr-ch-02-nfr-20-adr-13).
+- **Firebase push**: copy the service account JSON to `deploy/secrets/fcm.json` (the folder is gitignored) and set `FCM_CREDENTIALS=/run/secrets/fcm.json` in `.env`, then `docker compose up -d app`. With `FCM_CREDENTIALS` empty the app still works and notifications stay in-app. Manual steps and checks: [section 9.2](../docs/setup-local.md#92-firebase-cloud-messaging-real-push-fr-nt-02).
+
+Not run on a real server yet: this stack was only validated with `docker compose config`.
+
 ## TLS (Let's Encrypt)
 
 ```sh

@@ -1,5 +1,7 @@
 package vn.edu.uit.nearby.nearby_backend.listing;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -11,5 +13,11 @@ import java.util.UUID;
 public interface ListingLookup {
 
 	Optional<ListingSnapshot> find(UUID listingId);
+
+	/**
+	 * One query for many listings, such as the rows of the conversation list (A17).
+	 * @return the snapshots by listing id; unknown ids are absent
+	 */
+	Map<UUID, ListingSnapshot> findAll(Collection<UUID> listingIds);
 
 }

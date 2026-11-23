@@ -38,7 +38,7 @@ import vn.edu.uit.nearby.nearby_backend.areaverification.application.AreaVerific
 import vn.edu.uit.nearby.nearby_backend.identity.AppParameters;
 import vn.edu.uit.nearby.nearby_backend.identity.application.consent.LocationConsentService;
 import vn.edu.uit.nearby.nearby_backend.identity.infrastructure.UserRepository;
-import vn.edu.uit.nearby.nearby_backend.listing.TestImages;
+import vn.edu.uit.nearby.nearby_backend.support.TestImages;
 import vn.edu.uit.nearby.nearby_backend.listing.application.ListingTestData;
 import vn.edu.uit.nearby.nearby_backend.listing.application.ListingTestData.Seller;
 import vn.edu.uit.nearby.nearby_backend.listing.infrastructure.ListingImageRepository;

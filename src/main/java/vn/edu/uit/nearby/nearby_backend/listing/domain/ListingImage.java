@@ -1,5 +1,9 @@
 package vn.edu.uit.nearby.nearby_backend.listing.domain;
 
+import vn.edu.uit.nearby.nearby_backend.shared.image.ProcessedImage;
+
+import vn.edu.uit.nearby.nearby_backend.shared.image.ImageRejectReason;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;

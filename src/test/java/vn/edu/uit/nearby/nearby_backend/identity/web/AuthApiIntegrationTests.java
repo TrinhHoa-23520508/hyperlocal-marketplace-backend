@@ -474,8 +474,10 @@ class AuthApiIntegrationTests {
 	}
 
 	private void insertDeviceToken(UUID userId, String fcmToken) {
-		jdbc.sql("INSERT INTO device_tokens (id, user_id, fcm_token) VALUES (:id, :userId, :fcmToken)")
+		jdbc.sql(
+				"INSERT INTO device_tokens (id, user_id, device_id, fcm_token) VALUES (:id, :userId, :deviceId, :fcmToken)")
 			.param("id", UUID.randomUUID())
+			.param("deviceId", fcmToken)
 			.param("userId", userId)
 			.param("fcmToken", fcmToken)
 			.update();

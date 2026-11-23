@@ -25,6 +25,7 @@ val minioVersion = "8.6.0"
 // Listing image pipeline (DEC-LS-4): JPEG decoding beyond the JDK, WebP decoding and encoding (bundled libwebp)
 val twelveMonkeysVersion = "3.15.3"
 val webpImageIoVersion = "0.11.0"
+val googleAuthVersion = "1.30.1"
 
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
@@ -37,6 +38,8 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
 	implementation("org.springframework.boot:spring-boot-starter-websocket")
+	// TCP client of the RabbitMQ STOMP broker relay (ADR-13)
+	implementation("io.projectreactor.netty:reactor-netty-core")
 	implementation("org.flywaydb:flyway-database-postgresql")
 	implementation("org.springframework.modulith:spring-modulith-starter-core")
 	implementation("org.springframework.modulith:spring-modulith-starter-jdbc")
@@ -45,6 +48,8 @@ dependencies {
 	implementation("io.minio:minio:$minioVersion")
 	implementation("com.twelvemonkeys.imageio:imageio-jpeg:$twelveMonkeysVersion")
 	implementation("com.github.usefulness:webp-imageio:$webpImageIoVersion")
+	// Service account access token for the FCM HTTP v1 API (FR-NT-02)
+	implementation("com.google.auth:google-auth-library-oauth2-http:$googleAuthVersion")
 	compileOnly("org.projectlombok:lombok")
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 	developmentOnly("org.springframework.boot:spring-boot-docker-compose")

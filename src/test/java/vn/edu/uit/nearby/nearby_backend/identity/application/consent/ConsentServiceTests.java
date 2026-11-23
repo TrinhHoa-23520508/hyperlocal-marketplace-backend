@@ -96,6 +96,22 @@ class ConsentServiceTests {
 		verify(consents, never()).save(any());
 	}
 
+	@Test
+	void marketingPushIsAllowedOnlyWhileTheNewestRowIsGranted() {
+		UserConsent granted = consent(ConsentPurpose.PUSH_MARKETING);
+		UserConsent withdrawn = consent(ConsentPurpose.PUSH_MARKETING);
+		withdrawn.withdraw(LATER);
+		UUID neverAsked = UUID.randomUUID();
+		UUID withdrewIt = UUID.randomUUID();
+		when(consents.findCurrent(USER_ID, ConsentPurpose.PUSH_MARKETING)).thenReturn(Optional.of(granted));
+		when(consents.findCurrent(withdrewIt, ConsentPurpose.PUSH_MARKETING)).thenReturn(Optional.of(withdrawn));
+		when(consents.findCurrent(neverAsked, ConsentPurpose.PUSH_MARKETING)).thenReturn(Optional.empty());
+
+		assertThat(service().allowsPushMarketing(USER_ID)).isTrue();
+		assertThat(service().allowsPushMarketing(withdrewIt)).isFalse();
+		assertThat(service().allowsPushMarketing(neverAsked)).isFalse();
+	}
+
 	private static UserConsent consent(ConsentPurpose purpose) {
 		return UserConsent.grant(USER_ID, new ConsentGrant(purpose, "1.0", ConsentChannel.ANDROID), NOW);
 	}

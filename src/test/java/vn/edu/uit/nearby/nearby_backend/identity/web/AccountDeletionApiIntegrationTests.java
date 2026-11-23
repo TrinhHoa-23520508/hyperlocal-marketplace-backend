@@ -82,8 +82,10 @@ class AccountDeletionApiIntegrationTests {
 
 	@Test
 	void deletionStopsPushesToEveryDevice() throws Exception {
-		jdbc.sql("INSERT INTO device_tokens (id, user_id, fcm_token) VALUES (:id, :userId, :fcmToken)")
+		jdbc.sql(
+				"INSERT INTO device_tokens (id, user_id, device_id, fcm_token) VALUES (:id, :userId, :deviceId, :fcmToken)")
 			.param("id", UUID.randomUUID())
+			.param("deviceId", "device-1")
 			.param("userId", user.getId())
 			.param("fcmToken", "fcm-" + user.getId())
 			.update();

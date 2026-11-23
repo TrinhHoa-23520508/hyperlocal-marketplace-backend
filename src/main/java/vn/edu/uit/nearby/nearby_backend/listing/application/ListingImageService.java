@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import vn.edu.uit.nearby.nearby_backend.listing.domain.ImageProcessingStatus;
-import vn.edu.uit.nearby.nearby_backend.listing.domain.ImageRejectReason;
+import vn.edu.uit.nearby.nearby_backend.shared.image.ImageRejectReason;
 import vn.edu.uit.nearby.nearby_backend.listing.domain.ListingImage;
 import vn.edu.uit.nearby.nearby_backend.listing.infrastructure.ListingImageRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.constant.ErrorCodes;

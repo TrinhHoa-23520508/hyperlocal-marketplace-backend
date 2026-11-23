@@ -18,6 +18,22 @@ services:
     image: 'redis:7.4-alpine'
     ports:
       - '${REDIS_PORT:-6379}:6379'
+  rabbitmq:
+    # STOMP broker relay for chat across application replicas (ADR-13).
+    image: 'rabbitmq:4-management-alpine'
+    # The STOMP plugin is not enabled in the stock image.
+    command: >
+      sh -c "rabbitmq-plugins enable --offline rabbitmq_stomp &&
+      exec docker-entrypoint.sh rabbitmq-server"
+    labels:
+      org.springframework.boot.ignore: true
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-nearby}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-nearby-secret}
+    ports:
+      - '${RABBITMQ_AMQP_PORT:-5672}:5672'
+      - '${RABBITMQ_STOMP_PORT:-61613}:61613'
+      - '${RABBITMQ_MANAGEMENT_PORT:-15672}:15672'
   minio:
     # Community build: upstream MinIO stopped publishing Docker images.
     image: 'pgsty/minio:RELEASE.2026-08-04T00-00-00Z'

@@ -15,11 +15,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import vn.edu.uit.nearby.nearby_backend.listing.TestImages;
+import vn.edu.uit.nearby.nearby_backend.support.TestImages;
 import vn.edu.uit.nearby.nearby_backend.listing.application.ListingImageService.ImageStatusView;
 import vn.edu.uit.nearby.nearby_backend.listing.application.ListingImageService.UploadTicket;
 import vn.edu.uit.nearby.nearby_backend.listing.domain.ImageProcessingStatus;
-import vn.edu.uit.nearby.nearby_backend.listing.domain.ImageRejectReason;
+import vn.edu.uit.nearby.nearby_backend.shared.image.ImageRejectReason;
 import vn.edu.uit.nearby.nearby_backend.listing.domain.ListingFixtures;
 import vn.edu.uit.nearby.nearby_backend.listing.domain.ListingImage;
 import vn.edu.uit.nearby.nearby_backend.listing.infrastructure.ListingImageRepository;

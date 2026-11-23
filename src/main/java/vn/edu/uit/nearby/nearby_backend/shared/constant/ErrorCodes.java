@@ -132,6 +132,18 @@ public final class ErrorCodes {
 
 	public static final String IMAGE_NOT_FOUND = "IMAGE_NOT_FOUND";
 
+	public static final String SELF_ACTION_NOT_ALLOWED = "SELF_ACTION_NOT_ALLOWED";
+
+	public static final String CONVERSATION_NOT_FOUND = "CONVERSATION_NOT_FOUND";
+
+	public static final String CONVERSATION_CLOSED = "CONVERSATION_CLOSED";
+
+	public static final String MESSAGE_TOO_LONG = "MESSAGE_TOO_LONG";
+
+	public static final String CHAT_RATE_LIMITED = "CHAT_RATE_LIMITED";
+
+	public static final String NOTIFICATION_NOT_FOUND = "NOTIFICATION_NOT_FOUND";
+
 	public static final String CATEGORY_INACTIVE = "CATEGORY_INACTIVE";
 
 	public static final String LISTING_DAILY_LIMIT = "LISTING_DAILY_LIMIT";
