@@ -1,4 +1,4 @@
-package vn.edu.uit.nearby.nearby_backend.identity.domain;
+package vn.edu.uit.nearby.nearby_backend.shared.storage;
 
 import java.util.Locale;
 
@@ -9,8 +9,9 @@ import vn.edu.uit.nearby.nearby_backend.shared.constant.ImageContentTypes;
 import vn.edu.uit.nearby.nearby_backend.shared.error.InvalidRequestException;
 
 /**
- * Accepted image formats and size (FR-ID-11). Checked once when the client asks for an
- * upload URL and again on the uploaded object, because a presigned URL cannot limit size.
+ * Accepted image formats and size for avatars (FR-ID-11) and listing images (FR-LS-02).
+ * Checked once when the client asks for an upload URL and again on the uploaded object,
+ * because a presigned URL cannot limit size.
  */
 public record ImageUploadPolicy(long maxSizeBytes) {
 

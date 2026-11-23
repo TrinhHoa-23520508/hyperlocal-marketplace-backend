@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
@@ -20,6 +21,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -84,6 +87,41 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED,
 				"Request validation failed.");
 		problem.setProperty("errors", fieldErrorsOf(ex));
+		return handleExceptionInternal(ex, problem, headers, HttpStatus.BAD_REQUEST, request);
+	}
+
+	/**
+	 * A query or path value of the wrong type, such as an unknown enum name.
+	 */
+	@Override
+	protected @Nullable ResponseEntity<Object> handleTypeMismatch(TypeMismatchException ex, HttpHeaders headers,
+			HttpStatusCode status, WebRequest request) {
+		String field = ex instanceof MethodArgumentTypeMismatchException mismatch ? mismatch.getName()
+				: String.valueOf(ex.getPropertyName());
+		return validationFailed(ex, List.of(Map.of("field", field, "message", "Invalid value.")), headers, request);
+	}
+
+	/**
+	 * A constraint on a {@code @RequestParam} or {@code @PathVariable}.
+	 */
+	@Override
+	protected @Nullable ResponseEntity<Object> handleHandlerMethodValidationException(
+			HandlerMethodValidationException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+		List<Map<String, String>> errors = ex.getParameterValidationResults()
+			.stream()
+			.flatMap(result -> result.getResolvableErrors()
+				.stream()
+				.map(error -> Map.of("field", String.valueOf(result.getMethodParameter().getParameterName()), "message",
+						String.valueOf(error.getDefaultMessage()))))
+			.toList();
+		return validationFailed(ex, errors, headers, request);
+	}
+
+	private @Nullable ResponseEntity<Object> validationFailed(Exception ex, List<Map<String, String>> errors,
+			HttpHeaders headers, WebRequest request) {
+		ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_FAILED,
+				"Request validation failed.");
+		problem.setProperty("errors", errors);
 		return handleExceptionInternal(ex, problem, headers, HttpStatus.BAD_REQUEST, request);
 	}
 

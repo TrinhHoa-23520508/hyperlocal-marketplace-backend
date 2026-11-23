@@ -11,13 +11,23 @@ servers:
 security:
 - bearerAuth: []
 tags:
-- name: Authentication
-  description: "Phone registration with SMS codes, login, tokens, password reset and\
-    \ email verification"
 - name: Consents
   description: Consent per purpose and marketing pushes (FR-ID-15)
 - name: Profile
   description: The current user's profile and avatar (FR-ID-03)
+- name: Discovery
+  description: "Nearby feed, search, map and categories (FR-DC-01..07; A06-A09, A11)"
+- name: Listings
+  description: "Post and manage listings, listing detail (FR-LS-01..14, FR-DC-08;\
+    \ A10, A12, A14)"
+- name: Listing images
+  description: "Upload listing images; they are checked and re-encoded without EXIF/GPS\
+    \ (FR-LS-02, UC-SY-10; A13)"
+- name: Authentication
+  description: "Phone registration with SMS codes, login, tokens, password reset and\
+    \ email verification"
+- name: Favorites
+  description: "Saved listings (FR-LS-12; A10, A15)"
 - name: Account security
   description: "The current user's password, optional email address and account deletion"
 - name: Areas
@@ -378,6 +388,182 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /api/v1/listings/{listingId}:
+    get:
+      tags:
+      - Listings
+      summary: "Listing detail with buttons and their reasons (UC-DC-04, A10); counts\
+        \ a view"
+      description: "Public. The owner also gets the exact pin. lat and lon, when given,\
+        \ are where the distance is measured from; otherwise the caller's active area."
+      operationId: detail
+      parameters:
+      - name: listingId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: lat
+        in: query
+        required: false
+        schema:
+          type: number
+          format: double
+          maximum: 90.0
+          minimum: -90.0
+      - name: lon
+        in: query
+        required: false
+        schema:
+          type: number
+          format: double
+          maximum: 180.0
+          minimum: -180.0
+      responses:
+        "404":
+          description: "LISTING_NOT_FOUND: deleted, removed, hidden, or between users\
+            \ who blocked each other"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      security: []
+    put:
+      tags:
+      - Listings
+      summary: "Edit every field but the area (UC-LS-02, A12)"
+      operationId: edit
+      parameters:
+      - name: listingId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EditListingRequest"
+        required: true
+      responses:
+        "404":
+          description: "LISTING_NOT_FOUND: not one of the caller's listings"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "CONCURRENT_MODIFICATION: reload; currentVersion | INVALID_LISTING_STATE:\
+            \ SOLD, REMOVED or DELETED | LISTING_HAS_OPEN_TRANSACTIONS: price change\
+            \ while RESERVED; transactionId"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: PIN_OUTSIDE_AREA | IMAGE_INVALID | CATEGORY_INACTIVE
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+      - Listings
+      summary: "Delete: 404 for everyone afterwards; conversations stay readable (UC-LS-04,\
+        \ A14)"
+      operationId: delete
+      parameters:
+      - name: listingId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "404":
+          description: LISTING_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "LISTING_HAS_OPEN_TRANSACTIONS: an OFFERED or ACCEPTED transaction;\
+            \ transactionId | INVALID_LISTING_STATE: SOLD or REMOVED"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/listings/{listingId}/favorite:
+    put:
+      tags:
+      - Favorites
+      summary: Save a listing; saving again changes nothing (UC-LS-08)
+      operationId: save
+      parameters:
+      - name: listingId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "404":
+          description: "LISTING_NOT_FOUND: the listing cannot be seen"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      tags:
+      - Favorites
+      summary: Unsave a listing; works on listings that are no longer available (UC-LS-08)
+      operationId: unsave
+      parameters:
+      - name: listingId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /api/v1/areas/active:
     put:
       tags:
@@ -453,6 +639,321 @@ paths:
         "400":
           description: "INVALID_IMAGE: not JPEG, PNG or WebP, or over 5 MB | VALIDATION_FAILED:\
             \ errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/listings:
+    post:
+      tags:
+      - Listings
+      summary: "Post a listing; it is ACTIVE at once (UC-LS-01, A12)"
+      operationId: create
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        description: UUID; resending the same key and body returns the stored response
+        required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateListingRequest"
+        required: true
+      responses:
+        "201":
+          description: The new listing; Location points to its detail
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OwnerListingResponse"
+        "400":
+          description: "IDEMPOTENCY_KEY_REQUIRED | VALIDATION_FAILED: errors lists\
+            \ each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: "TRADING_GATE_FAILED: reasons lists the conditions to fix"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "LISTING_OPEN_LIMIT: 30 open listings already | IDEMPOTENCY_CONFLICT\
+            \ | DUPLICATE_REQUEST"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: "PIN_OUTSIDE_AREA: the area is not a valid area of the caller\
+            \ or the pin is more than 1 500 m from its center | IMAGE_INVALID: an\
+            \ image is not the caller's, not READY or used by another listing | CATEGORY_INACTIVE"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: "LISTING_DAILY_LIMIT: 3 listings a day until the first completed\
+            \ transaction; remaining, dailyLimit and Retry-After"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/listings/{listingId}/unhide:
+    post:
+      tags:
+      - Listings
+      summary: "Show a listing the caller hid (UC-LS-03, A14)"
+      operationId: unhide
+      parameters:
+      - name: listingId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionRequest"
+        required: true
+      responses:
+        "404":
+          description: LISTING_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "CONCURRENT_MODIFICATION | INVALID_LISTING_STATE: not HIDDEN,\
+            \ or hidden because its area was removed or the account was sanctioned\
+            \ (hiddenReason)"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/listings/{listingId}/sold-outside:
+    post:
+      tags:
+      - Listings
+      summary: "Mark sold outside the app: no transaction, no review (UC-LS-05 A1,\
+        \ A14)"
+      operationId: markSoldOutside
+      parameters:
+      - name: listingId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: Idempotency-Key
+        in: header
+        description: UUID; resending the same key and body returns the stored response
+        required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionRequest"
+        required: true
+      responses:
+        "400":
+          description: "IDEMPOTENCY_KEY_REQUIRED | VALIDATION_FAILED: errors lists\
+            \ each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: LISTING_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "CONCURRENT_MODIFICATION | INVALID_LISTING_STATE: not ACTIVE\
+            \ | IDEMPOTENCY_CONFLICT | DUPLICATE_REQUEST"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/listings/{listingId}/hide:
+    post:
+      tags:
+      - Listings
+      summary: "Hide: off the feed, search and map, still in \"Tin của tôi\" (UC-LS-03,\
+        \ A14)"
+      operationId: hide
+      parameters:
+      - name: listingId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionRequest"
+        required: true
+      responses:
+        "404":
+          description: LISTING_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "CONCURRENT_MODIFICATION | INVALID_LISTING_STATE: not ACTIVE\
+            \ | LISTING_HAS_OPEN_TRANSACTIONS: RESERVED; transactionId"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "400":
+          description: "VALIDATION_FAILED: errors lists each invalid field"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/listings/{listingId}/bump:
+    post:
+      tags:
+      - Listings
+      summary: "Bump to the top of the feed: once per 48 h, 10 times at most (UC-LS-06,\
+        \ A14)"
+      operationId: bump
+      parameters:
+      - name: listingId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "404":
+          description: LISTING_NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: "BUMP_LIMIT_REACHED: 10 bumps done | INVALID_LISTING_STATE:\
+            \ not ACTIVE"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: "BUMP_TOO_SOON: nextAllowedAt and Retry-After"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/listings/images/{imageId}/complete:
+    post:
+      tags:
+      - Listing images
+      summary: "Upload done: processing starts; poll the status until READY or REJECTED"
+      description: Calling it again after processing returns the current status.
+      operationId: completeUpload
+      parameters:
+      - name: imageId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "400":
+          description: "INVALID_IMAGE: nothing was uploaded, or the object is over\
+            \ the limit (it is deleted)"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: "IMAGE_NOT_FOUND: not one of the caller's images"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "202":
+          description: Accepted
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ImageStatusResponse"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/listings/images/upload-url:
+    post:
+      tags:
+      - Listing images
+      summary: A presigned PUT URL for one image under the private incoming/ prefix
+      operationId: requestUploadUrl
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadUrlRequest"
+        required: true
+      responses:
+        "400":
+          description: "INVALID_IMAGE: not JPEG, PNG or WebP (convert HEIC to JPEG),\
+            \ or over 5 242 880 bytes | VALIDATION_FAILED: errors lists each invalid\
+            \ field"
           content:
             application/problem+json:
               schema:
@@ -1211,6 +1712,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
       security: []
+  /api/v1/users/{userId}/listings:
+    get:
+      tags:
+      - Discovery
+      summary: "A seller's ACTIVE and RESERVED listings for the public profile (FR-ID-13,\
+        \ A11)"
+      operationId: sellerListings
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "400":
+          description: INVALID_CURSOR
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      security: []
   /api/v1/users/me/trading-gate:
     get:
       tags:
@@ -1224,6 +1758,37 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/TradingGateResponse"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/users/me/favorites:
+    get:
+      tags:
+      - Favorites
+      summary: "The caller's saved listings, newest first (UC-LS-09, A15)"
+      operationId: savedListings
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "400":
+          description: INVALID_CURSOR
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "401":
           description: "UNAUTHENTICATED: missing or expired token"
           content:
@@ -1283,6 +1848,404 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /api/v1/search:
+    get:
+      tags:
+      - Discovery
+      summary: "Search with keyword, filters and sort, 20 a page (UC-DC-02, A07/A08)"
+      operationId: search
+      parameters:
+      - name: q
+        in: query
+        description: Keyword; accents and case are ignored ("ao khoac" finds "Áo khoác")
+        required: false
+        schema:
+          type:
+          - string
+          - "null"
+          maxLength: 100
+          minLength: 0
+      - name: categoryId
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - "null"
+          format: int32
+      - name: minPrice
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - "null"
+          format: int64
+          minimum: 0
+      - name: maxPrice
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - "null"
+          format: int64
+          minimum: 0
+      - name: condition
+        in: query
+        description: "Repeat for several: condition=NEW&condition=LIKE_NEW"
+        required: false
+        schema:
+          type:
+          - array
+          - "null"
+          items:
+            type: string
+            enum:
+            - NEW
+            - LIKE_NEW
+            - USED
+            - WORN
+      - name: freeOnly
+        in: query
+        description: Only free items (price 0)
+        required: false
+        schema:
+          type:
+          - boolean
+          - "null"
+      - name: radiusKm
+        in: query
+        description: "1-20; outside values are clamped and flagged; default: the range\
+          \ of the center"
+        required: false
+        schema:
+          type:
+          - number
+          - "null"
+          format: double
+          exclusiveMinimum: 0
+      - name: includeSold
+        in: query
+        description: Also SOLD listings
+        required: false
+        schema:
+          type:
+          - boolean
+          - "null"
+      - name: sort
+        in: query
+        description: "NEWEST (default), NEAREST or RELEVANT"
+        required: false
+        schema:
+          type:
+          - string
+          - "null"
+          enum:
+          - NEAREST
+          - NEWEST
+          - RELEVANT
+      - name: lat
+        in: query
+        required: false
+        schema:
+          type:
+          - number
+          - "null"
+          format: double
+          maximum: 90.0
+          minimum: -90.0
+      - name: lon
+        in: query
+        required: false
+        schema:
+          type:
+          - number
+          - "null"
+          format: double
+          maximum: 180.0
+          minimum: -180.0
+      - name: rangeLevel
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - "null"
+      - name: cursor
+        in: query
+        description: nextCursor of the previous page of the same search
+        required: false
+        schema:
+          type:
+          - string
+          - "null"
+      responses:
+        "400":
+          description: "VALIDATION_FAILED: minPrice above maxPrice, unknown category\
+            \ or sort, no center | INVALID_RANGE | INVALID_CURSOR"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      security: []
+  /api/v1/map/listings:
+    get:
+      tags:
+      - Discovery
+      summary: "Map markers for a viewport: up to 200 points, otherwise clusters (UC-DC-03,\
+        \ A09)"
+      operationId: map
+      parameters:
+      - name: south
+        in: query
+        required: true
+        schema:
+          type: number
+          format: double
+          maximum: 90.0
+          minimum: -90.0
+      - name: west
+        in: query
+        required: true
+        schema:
+          type: number
+          format: double
+          maximum: 180.0
+          minimum: -180.0
+      - name: north
+        in: query
+        required: true
+        schema:
+          type: number
+          format: double
+          maximum: 90.0
+          minimum: -90.0
+      - name: east
+        in: query
+        required: true
+        schema:
+          type: number
+          format: double
+          maximum: 180.0
+          minimum: -180.0
+      - name: zoom
+        in: query
+        description: "Map zoom level, 0-22"
+        required: true
+        schema:
+          type: integer
+          format: int32
+          maximum: 22
+          minimum: 0
+      - name: categoryId
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - "null"
+          format: int32
+      - name: minPrice
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - "null"
+          format: int64
+          minimum: 0
+      - name: maxPrice
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - "null"
+          format: int64
+          minimum: 0
+      - name: freeOnly
+        in: query
+        required: false
+        schema:
+          type:
+          - boolean
+          - "null"
+      responses:
+        "400":
+          description: "VALIDATION_FAILED: viewport or zoom"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      security: []
+  /api/v1/listings/posting-eligibility:
+    get:
+      tags:
+      - Listings
+      summary: "Whether the caller may post now: trading gate and remaining quota\
+        \ (UC-LS-01 step 1)"
+      operationId: postingEligibility
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PostingEligibilityResponse"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/listings/me:
+    get:
+      tags:
+      - Listings
+      summary: "The caller's listings by state, with counters (UC-LS-07, A14)"
+      operationId: myListings
+      parameters:
+      - name: status
+        in: query
+        description: "Tab filter, repeatable; default every state but DELETED"
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - PENDING_REVIEW
+            - ACTIVE
+            - RESERVED
+            - SOLD
+            - HIDDEN
+            - DELETED
+            - REMOVED
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "400":
+          description: "INVALID_CURSOR | VALIDATION_FAILED: unknown status"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/listings/images/{imageId}:
+    get:
+      tags:
+      - Listing images
+      summary: Processing status of an uploaded image (UC-LS-01 A5)
+      operationId: status
+      parameters:
+      - name: imageId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "404":
+          description: "IMAGE_NOT_FOUND: not one of the caller's images"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: "UNAUTHENTICATED: missing or expired token"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/feed:
+    get:
+      tags:
+      - Discovery
+      summary: "Nearby feed: ACTIVE and RESERVED listings, newest or bumped first,\
+        \ 20 a page (UC-DC-01, A06)"
+      description: "Centered on lat/lon (GPS or picked point) with rangeLevel, or\
+        \ on the caller's active area. Guests must send lat and lon."
+      operationId: feed
+      parameters:
+      - name: lat
+        in: query
+        description: Latitude of a GPS position or picked point; with lon
+        required: false
+        schema:
+          type:
+          - number
+          - "null"
+          format: double
+          maximum: 90.0
+          minimum: -90.0
+      - name: lon
+        in: query
+        description: Longitude; with lat
+        required: false
+        schema:
+          type:
+          - number
+          - "null"
+          format: double
+          maximum: 180.0
+          minimum: -180.0
+      - name: rangeLevel
+        in: query
+        description: "NEAR, MEDIUM or FAR (2/4/6 km) for a point; default MEDIUM"
+        required: false
+        schema:
+          type:
+          - string
+          - "null"
+      - name: cursor
+        in: query
+        description: nextCursor of the previous page
+        required: false
+        schema:
+          type:
+          - string
+          - "null"
+      responses:
+        "400":
+          description: "VALIDATION_FAILED: no center (field center) or bad values\
+            \ | INVALID_RANGE: rangeLevel | INVALID_CURSOR: reload from the first\
+            \ page"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      security: []
+  /api/v1/categories:
+    get:
+      tags:
+      - Discovery
+      summary: "Active categories in display order (A08, A12)"
+      operationId: categories
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoryResponse"
+      security: []
   /api/v1/areas/me:
     get:
       tags:
@@ -1588,6 +2551,196 @@ components:
           minLength: 0
       required:
       - objectKey
+    EditListingRequest:
+      type: object
+      description: "Every field but the area (UC-LS-02, A12). Send the whole form\
+        \ back"
+      properties:
+        version:
+          type: integer
+          format: int64
+          description: The version the seller edited; a newer one is 409 CONCURRENT_MODIFICATION
+        title:
+          type: string
+          maxLength: 100
+          minLength: 0
+        description:
+          type: string
+          maxLength: 2000
+          minLength: 0
+        condition:
+          type: string
+          enum:
+          - NEW
+          - LIKE_NEW
+          - USED
+          - WORN
+        priceVnd:
+          type: integer
+          format: int64
+          maximum: 1000000000
+          minimum: 0
+        acceptOffers:
+          type: boolean
+        meetingSpot:
+          type: string
+          maxLength: 100
+          minLength: 0
+        categoryId:
+          type: integer
+          format: int32
+        latitude:
+          type: number
+          format: double
+          description: A moved pin must stay inside the listing's area
+          maximum: 90
+          minimum: -90
+        longitude:
+          type: number
+          format: double
+          maximum: 180
+          minimum: -180
+        imageIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 10
+          minItems: 1
+      required:
+      - categoryId
+      - condition
+      - imageIds
+      - latitude
+      - longitude
+      - priceVnd
+      - title
+      - version
+    ListingImageResponse:
+      type: object
+      description: Short-lived URLs of the WebP derivatives; the original is never
+        served (FR-LS-02)
+      properties:
+        id:
+          type: string
+          format: uuid
+        position:
+          type: integer
+          format: int32
+          description: 1 = cover
+        thumbnailUrl:
+          type: string
+          description: 320 px
+        largeUrl:
+          type: string
+          description: 1080 px
+    OwnerListingResponse:
+      type: object
+      description: "The caller's own listing after a change (A12, A14), with its exact\
+        \ pin"
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - PENDING_REVIEW
+          - ACTIVE
+          - RESERVED
+          - SOLD
+          - HIDDEN
+          - DELETED
+          - REMOVED
+        hiddenReason:
+          type: string
+          description: "OWNER, AREA_REMOVED or SANCTION while HIDDEN"
+          enum:
+          - OWNER
+          - AREA_REMOVED
+          - SANCTION
+        categoryId:
+          type: integer
+          format: int32
+        areaId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        condition:
+          type: string
+          enum:
+          - NEW
+          - LIKE_NEW
+          - USED
+          - WORN
+        priceVnd:
+          type: integer
+          format: int64
+        free:
+          type: boolean
+        acceptOffers:
+          type: boolean
+        meetingSpot:
+          type: string
+        pin:
+          $ref: "#/components/schemas/PointResponse"
+          description: Exact pin; only ever returned to the owner
+        publicPoint:
+          $ref: "#/components/schemas/PointResponse"
+          description: Blurred point everyone else sees
+        localityName:
+          type: string
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/ListingImageResponse"
+        views:
+          type: integer
+          format: int32
+        favorites:
+          type: integer
+          format: int32
+        chats:
+          type: integer
+          format: int32
+        bumpCount:
+          type: integer
+          format: int32
+        bumpedAt:
+          type: string
+          format: date-time
+        nextBumpAllowedAt:
+          type: string
+          format: date-time
+          description: When the next bump is allowed; null before the first bump
+        publishedAt:
+          type: string
+          format: date-time
+        soldAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+          description: Send it back with the next change
+    PointResponse:
+      type: object
+      properties:
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
     SelectActiveAreaRequest:
       type: object
       properties:
@@ -1680,6 +2833,154 @@ components:
           type: object
           additionalProperties:
             type: string
+    CreateListingRequest:
+      type: object
+      description: "A new listing (UC-LS-01, A12)"
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: One of the caller's VERIFIED or EXPIRING areas; it never changes
+        title:
+          type: string
+          description: 5-100 characters
+          example: Áo khoác da nam
+          maxLength: 100
+          minLength: 0
+        description:
+          type: string
+          description: At most 2 000 characters; line breaks kept
+          maxLength: 2000
+          minLength: 0
+        condition:
+          type: string
+          enum:
+          - NEW
+          - LIKE_NEW
+          - USED
+          - WORN
+        priceVnd:
+          type: integer
+          format: int64
+          description: "Whole VND, 0-1 000 000 000; 0 = given away"
+          example: 150000
+          maximum: 1000000000
+          minimum: 0
+        acceptOffers:
+          type: boolean
+          description: "false: offers must match the price (FR-TX-01); default true"
+        meetingSpot:
+          type: string
+          description: At most 100 characters
+          example: Cổng KTX khu A
+          maxLength: 100
+          minLength: 0
+        categoryId:
+          type: integer
+          format: int32
+          example: 1
+        latitude:
+          type: number
+          format: double
+          description: "Exact pin, private; within 1 500 m of the area center"
+          maximum: 90
+          minimum: -90
+        longitude:
+          type: number
+          format: double
+          maximum: 180
+          minimum: -180
+        imageIds:
+          type: array
+          description: 1-10 READY image ids in display order; the first is the cover
+          items:
+            type: string
+            format: uuid
+          maxItems: 10
+          minItems: 1
+      required:
+      - areaId
+      - categoryId
+      - condition
+      - imageIds
+      - latitude
+      - longitude
+      - priceVnd
+      - title
+    VersionRequest:
+      type: object
+      description: "The listing version the seller saw (optimistic lock, FR-LS-13)"
+      properties:
+        version:
+          type: integer
+          format: int64
+      required:
+      - version
+    ImageStatusResponse:
+      type: object
+      description: Poll until READY (use the image) or REJECTED (upload again) (UC-SY-10)
+      properties:
+        imageId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - UPLOADING
+          - READY
+          - REJECTED
+        rejectReason:
+          type: string
+          description: Only when REJECTED
+          enum:
+          - TYPE_MISMATCH
+          - UNSUPPORTED_TYPE
+          - TOO_LARGE
+          - DECODE_ERROR
+        thumbnailUrl:
+          type: string
+          description: "320 px preview, only when READY"
+    UploadUrlRequest:
+      type: object
+      description: "One image to upload (FR-LS-02, A13)"
+      properties:
+        contentType:
+          type: string
+          description: "image/jpeg, image/png or image/webp; convert HEIC to JPEG\
+            \ first"
+          example: image/jpeg
+          minLength: 1
+        sizeBytes:
+          type: integer
+          format: int64
+          description: At most 5 242 880 bytes
+          example: 2048000
+          exclusiveMinimum: 0
+      required:
+      - contentType
+      - sizeBytes
+    UploadTicketResponse:
+      type: object
+      description: "Upload the bytes with PUT to uploadUrl and Content-Type = contentType,\
+        \ then call complete"
+      properties:
+        imageId:
+          type: string
+          format: uuid
+        uploadUrl:
+          type: string
+        uploadMethod:
+          type: string
+          example: PUT
+        contentType:
+          type: string
+          example: image/jpeg
+        expiresAt:
+          type: string
+          format: date-time
+        maxSizeBytes:
+          type: integer
+          format: int64
     RegisterRequest:
       type: object
       properties:
@@ -2147,6 +3448,66 @@ components:
           description: "Area label: the public neighborhood name, never a coordinate\
             \ (FR-ID-13); null when unknown, when no area is valid, or for a deleted\
             \ account"
+    CursorPageListingCardResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ListingCardResponse"
+        nextCursor:
+          type: string
+        hasMore:
+          type: boolean
+    ListingCardResponse:
+      type: object
+      description: Result card (FR-DC-05); never a location
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        priceVnd:
+          type: integer
+          format: int64
+        free:
+          type: boolean
+          description: Show Mien phi when true
+        status:
+          type: string
+          description: RESERVED shows a label; SOLD only when includeSold
+          enum:
+          - PENDING_REVIEW
+          - ACTIVE
+          - RESERVED
+          - SOLD
+          - HIDDEN
+          - DELETED
+          - REMOVED
+        coverThumbnailUrl:
+          type: string
+          description: "320 px; null: show a placeholder"
+        distanceMeters:
+          type: integer
+          format: int64
+          description: "Rounded to 100 m; show m below 1 km, km with one decimal from\
+            \ 1 km"
+        localityName:
+          type: string
+          description: Neighborhood label; null until known
+        postedAt:
+          type: string
+          format: date-time
+          description: Posted or last bumped
+        sellerTier:
+          type: string
+          enum:
+          - NEW
+          - CAUTION
+          - STANDARD
+          - TRUSTED
+          - HIGHLY_TRUSTED
     TradingGateResponse:
       type: object
       properties:
@@ -2165,6 +3526,49 @@ components:
             - NO_VALID_AREA
             - AREA_EXPIRED
             - CONSENT_MISSING
+    CursorPageFavoriteResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FavoriteResponse"
+        nextCursor:
+          type: string
+        hasMore:
+          type: boolean
+    FavoriteResponse:
+      type: object
+      description: A saved listing on A15 (FR-LS-12)
+      properties:
+        listingId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        priceVnd:
+          type: integer
+          format: int64
+        free:
+          type: boolean
+        status:
+          type: string
+          enum:
+          - PENDING_REVIEW
+          - ACTIVE
+          - RESERVED
+          - SOLD
+          - HIDDEN
+          - DELETED
+          - REMOVED
+        available:
+          type: boolean
+          description: "false: grey it out as no longer available"
+        coverThumbnailUrl:
+          type: string
+        savedAt:
+          type: string
+          format: date-time
     BlockedUserResponse:
       type: object
       properties:
@@ -2189,6 +3593,324 @@ components:
           type: string
         hasMore:
           type: boolean
+    ListingPageResponse:
+      type: object
+      description: One page of the feed (FR-DC-01) or of a search (FR-DC-02)
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ListingCardResponse"
+        nextCursor:
+          type: string
+          description: Pass back as cursor for the next page; null on the last page
+        hasMore:
+          type: boolean
+        radiusMeters:
+          type: integer
+          format: int32
+          description: Radius actually searched
+        radiusAdjusted:
+          type: boolean
+          description: The requested radius was outside 1-20 km and was clamped (FR-DC-06)
+        suggestWiderRadius:
+          type: boolean
+          description: "Nothing found: offer to widen the radius (FR-DC-06)"
+    Cluster:
+      type: object
+      properties:
+        listings:
+          type: integer
+          format: int64
+          description: Listings in the cluster
+        center:
+          $ref: "#/components/schemas/PointResponse"
+    MapResponse:
+      type: object
+      description: "A09 markers (FR-DC-07): points when at most 200 listings are in\
+        \ view, else clusters only"
+      properties:
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/Point"
+        clusters:
+          type: array
+          items:
+            $ref: "#/components/schemas/Cluster"
+    Point:
+      type: object
+      properties:
+        listingId:
+          type: string
+          format: uuid
+        priceVnd:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+          - PENDING_REVIEW
+          - ACTIVE
+          - RESERVED
+          - SOLD
+          - HIDDEN
+          - DELETED
+          - REMOVED
+        location:
+          $ref: "#/components/schemas/PointResponse"
+          description: Blurred public point
+    Action:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        reason:
+          type: string
+          enum:
+          - LOGIN_REQUIRED
+          - OWN_LISTING
+          - LISTING_NOT_AVAILABLE
+          - TRADING_GATE_FAILED
+          - LISTING_AREA_EXPIRED
+          - OUT_OF_RANGE
+        gateFailures:
+          type: array
+          description: "Trading gate conditions to fix, only for TRADING_GATE_FAILED"
+          items:
+            type: string
+    Actions:
+      type: object
+      description: "Each button: enabled, or disabled with the reason to show and\
+        \ act on"
+      properties:
+        ownListing:
+          type: boolean
+          description: Show edit actions instead of Chat and Offer
+        chat:
+          $ref: "#/components/schemas/Action"
+        offer:
+          $ref: "#/components/schemas/Action"
+        save:
+          $ref: "#/components/schemas/Action"
+        report:
+          $ref: "#/components/schemas/Action"
+    ListingDetailResponse:
+      type: object
+      description: A10 listing detail (FR-DC-08)
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - PENDING_REVIEW
+          - ACTIVE
+          - RESERVED
+          - SOLD
+          - HIDDEN
+          - DELETED
+          - REMOVED
+        hiddenReason:
+          type: string
+          description: Only for the owner
+          enum:
+          - OWNER
+          - AREA_REMOVED
+          - SANCTION
+        categoryId:
+          type: integer
+          format: int32
+        title:
+          type: string
+        description:
+          type: string
+        condition:
+          type: string
+          enum:
+          - NEW
+          - LIKE_NEW
+          - USED
+          - WORN
+        priceVnd:
+          type: integer
+          format: int64
+        free:
+          type: boolean
+        acceptOffers:
+          type: boolean
+        meetingSpot:
+          type: string
+        images:
+          type: array
+          description: 1080 px images in order
+          items:
+            $ref: "#/components/schemas/ListingImageResponse"
+        publicPoint:
+          $ref: "#/components/schemas/PointResponse"
+          description: Blurred point for the mini map
+        pin:
+          $ref: "#/components/schemas/PointResponse"
+          description: "Exact pin, only for the owner (FR-LS-03)"
+        distanceMeters:
+          type: integer
+          format: int64
+          description: Rounded to 100 m; null without a center
+        localityName:
+          type: string
+        seller:
+          $ref: "#/components/schemas/Seller"
+        views:
+          type: integer
+          format: int32
+        favorites:
+          type: integer
+          format: int32
+        savedByViewer:
+          type: boolean
+          description: The caller saved it
+        postedAt:
+          type: string
+          format: date-time
+        soldAt:
+          type: string
+          format: date-time
+        actions:
+          $ref: "#/components/schemas/Actions"
+        version:
+          type: integer
+          format: int64
+    Seller:
+      type: object
+      description: "Name and avatar come from GET /users/{sellerId}"
+      properties:
+        id:
+          type: string
+          format: uuid
+        tier:
+          type: string
+          enum:
+          - NEW
+          - CAUTION
+          - STANDARD
+          - TRUSTED
+          - HIGHLY_TRUSTED
+        score:
+          type: number
+          description: 0-100; null until the seller has a score (baseline 50)
+    PostingEligibilityResponse:
+      type: object
+      description: "UC-LS-01 step 1: whether the caller may post now and why not"
+      properties:
+        canPost:
+          type: boolean
+        gateFailures:
+          type: array
+          description: Trading gate conditions to fix (FR-ID-20); empty when open
+          items:
+            type: string
+        remainingToday:
+          type: integer
+          format: int32
+          description: Posts left in the rolling 24 h window; null once the seller
+            has a completed transaction
+        dailyLimit:
+          type: integer
+          format: int32
+          example: 3
+        remainingOpen:
+          type: integer
+          format: int32
+          description: Open listings still allowed
+        maxOpenListings:
+          type: integer
+          format: int32
+          example: 30
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - PENDING_REVIEW
+          - ACTIVE
+          - RESERVED
+          - SOLD
+          - HIDDEN
+          - DELETED
+          - REMOVED
+        hiddenReason:
+          type: string
+          enum:
+          - OWNER
+          - AREA_REMOVED
+          - SANCTION
+        title:
+          type: string
+        priceVnd:
+          type: integer
+          format: int64
+        free:
+          type: boolean
+        coverThumbnailUrl:
+          type: string
+          description: "null: show a placeholder"
+        views:
+          type: integer
+          format: int32
+        chats:
+          type: integer
+          format: int32
+        favorites:
+          type: integer
+          format: int32
+        openOffers:
+          type: integer
+          format: int32
+          description: OFFERED transactions; 0 until the transaction module exists
+        createdAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+    MyListingsResponse:
+      type: object
+      description: A14 Tin cua toi (FR-LS-11)
+      properties:
+        countsByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+          description: "Listings per state for the tabs, zeros included; DELETED is\
+            \ never shown"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Item"
+        nextCursor:
+          type: string
+        hasMore:
+          type: boolean
+    CategoryResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+        code:
+          type: string
+          example: ELECTRONICS
+        name:
+          type: string
+          example: Đồ điện tử
+        iconKey:
+          type: string
     CursorPageAdminUserResponse:
       type: object
       properties:
@@ -2233,14 +3955,27 @@ components:
         \ (ACCOUNT_SUSPENDED / ACCOUNT_BANNED), nextAllowedAt (NAME_CHANGE_TOO_SOON),\
         \ blockers (ACCOUNT_DELETION_BLOCKED)."
       properties:
-        title:
-          type: string
-          example: Unprocessable Content
         violations:
           type: array
           description: Only for WEAK_PASSWORD
           items:
             type: object
+        title:
+          type: string
+          example: Unprocessable Content
+        type:
+          type: string
+          example: https://nearby.uit.edu.vn/problems/otp-invalid
+        status:
+          type: integer
+          format: int32
+          example: 422
+        code:
+          type: string
+          example: OTP_INVALID
+        detail:
+          type: string
+          example: The code is wrong. 4 attempts left.
         errors:
           type: array
           description: Only for VALIDATION_FAILED
@@ -2251,19 +3986,6 @@ components:
                 type: string
               message:
                 type: string
-        detail:
-          type: string
-          example: The code is wrong. 4 attempts left.
-        code:
-          type: string
-          example: OTP_INVALID
-        status:
-          type: integer
-          format: int32
-          example: 422
-        type:
-          type: string
-          example: https://nearby.uit.edu.vn/problems/otp-invalid
       required:
       - code
       - status

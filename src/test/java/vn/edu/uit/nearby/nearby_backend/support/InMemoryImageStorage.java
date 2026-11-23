@@ -23,6 +23,8 @@ public class InMemoryImageStorage implements ImageStorage {
 
 	private final Map<String, StoredObject> objects = new ConcurrentHashMap<>();
 
+	private final Map<String, byte[]> contents = new ConcurrentHashMap<>();
+
 	@Override
 	public PresignedUrl presignUpload(String objectKey, String contentType) {
 		return new PresignedUrl(BASE_URL + objectKey + "?upload", "PUT", Instant.now().plus(Duration.ofMinutes(10)));
@@ -41,10 +43,29 @@ public class InMemoryImageStorage implements ImageStorage {
 	@Override
 	public void delete(String objectKey) {
 		objects.remove(objectKey);
+		contents.remove(objectKey);
+	}
+
+	@Override
+	public Optional<byte[]> read(String objectKey) {
+		return Optional.ofNullable(contents.get(objectKey));
+	}
+
+	@Override
+	public void store(String objectKey, byte[] content, String contentType) {
+		objects.put(objectKey, new StoredObject(content.length, contentType));
+		contents.put(objectKey, content.clone());
 	}
 
 	public void simulateUpload(String objectKey, String contentType, long sizeBytes) {
 		objects.put(objectKey, new StoredObject(sizeBytes, contentType));
+	}
+
+	/**
+	 * Stands in for the client's upload of real bytes, for the image pipeline.
+	 */
+	public void simulateUpload(String objectKey, String contentType, byte[] content) {
+		store(objectKey, content, contentType);
 	}
 
 	public boolean contains(String objectKey) {

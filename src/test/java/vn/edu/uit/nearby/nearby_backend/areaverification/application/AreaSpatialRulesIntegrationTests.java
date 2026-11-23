@@ -10,6 +10,7 @@ import static vn.edu.uit.nearby.nearby_backend.areaverification.domain.AreaFixtu
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -21,6 +22,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import vn.edu.uit.nearby.nearby_backend.areaverification.AreaLocality;
 import vn.edu.uit.nearby.nearby_backend.areaverification.FeedArea;
 import vn.edu.uit.nearby.nearby_backend.areaverification.InteractionRange;
 import vn.edu.uit.nearby.nearby_backend.areaverification.ListingPinRule;
@@ -52,6 +54,9 @@ class AreaSpatialRulesIntegrationTests {
 
 	@Autowired
 	FeedArea feedArea;
+
+	@Autowired
+	AreaLocality areaLocality;
 
 	@Autowired
 	AreaVerificationService verification;
@@ -254,6 +259,22 @@ class AreaSpatialRulesIntegrationTests {
 
 		assertThat(feedArea.activeFeedArea(userId)).isEmpty();
 		assertThat(feedArea.activeFeedArea(accounts.eligibleUser())).isEmpty();
+	}
+
+	@Test
+	@DisplayName("FR-DC-04: a GPS or picked center uses the range level radius, MEDIUM by default")
+	void radiusOfARangeLevel() {
+		assertThat(feedArea.radiusMetersOf(null)).isEqualTo(4000);
+		assertThat(feedArea.radiusMetersOf("NEAR")).isEqualTo(2000);
+		assertThat(feedArea.radiusMetersOf("FAR")).isEqualTo(6000);
+		assertThatThrownBy(() -> feedArea.radiusMetersOf("HUGE")).hasFieldOrPropertyWithValue("code", "INVALID_RANGE");
+	}
+
+	@Test
+	@DisplayName("FR-DC-05: the locality label of an area is its public locality name, empty until known")
+	void localityNameOfAnArea() {
+		assertThat(areaLocality.localityNameOf(area.getId())).isEqualTo(Optional.ofNullable(area.getLocalityName()));
+		assertThat(areaLocality.localityNameOf(UUID.randomUUID())).isEmpty();
 	}
 
 	private UserArea verifyAt(UUID owner, GeoPoint place) {

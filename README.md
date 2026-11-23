@@ -69,3 +69,4 @@ flowchart LR
 - [Deployment](deploy/README.md)
 - [Identity API](docs/api/identity-api.md)
 - [Area API](docs/api/area-api.md)
+- [Listing API](docs/api/listing-api.md)

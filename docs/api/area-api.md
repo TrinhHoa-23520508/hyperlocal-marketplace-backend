@@ -8,7 +8,7 @@ Not built yet:
 
 ## Conventions
 
-Same as [`identity-api.md` › Conventions](identity-api.md#conventions): base path `/api/v1`, bearer token, RFC 9457 problems with a stable `code`, and `Retry-After` on `429`.
+Same as [`identity-api.md` › Conventions](identity-api.md#conventions): base path `/api/v1`, bearer token, RFC 9457 problems with a stable `code`, and `Retry-After` on `429`. Since 2026-11-22 a wrongly typed query value also answers `400 VALIDATION_FAILED` with `errors[]` (see the identity breaking-changes table).
 
 - **Idempotency-Key.** It is required on the two GPS endpoints (`POST /areas/verifications`, `POST /areas/{areaId}/renewals`, SRS section 5.4). Use a new UUID per tap of "Xác minh tại đây", and reuse it only when retrying that same tap.
 - **Coordinates.** No response ever contains coordinates (NFR-15). The app shows its own GPS position on the map, never a position from the server.
@@ -114,7 +114,7 @@ Confirm before removing: "Các tin đăng thuộc khu vực này sẽ bị ẩn"
 
 ### FA5. Trading actions out of range (FR-AR-09; A10, A12)
 
-These codes come from the Listing, Chat and Transaction endpoints (not built yet), which use this module's rules:
+These codes come from the [Listing](listing-api.md), Chat and Transaction endpoints (Chat and Transaction not built yet), which use this module's rules. On the listing detail (A10) the same rules come back as disabled buttons with `reason` `OUT_OF_RANGE` or `LISTING_AREA_EXPIRED` ([Listing FL7](listing-api.md#fl7-listing-detail-uc-dc-04-a10)):
 
 | Code | When | UI |
 |---|---|---|

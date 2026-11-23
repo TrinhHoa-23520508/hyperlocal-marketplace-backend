@@ -38,6 +38,20 @@ public class SecurityConfig {
 
 	private static final String[] ADMIN_ENDPOINTS = { ApiPaths.ADMIN_PATTERN, ApiPaths.ACTUATOR_PATTERN };
 
+	/**
+	 * Reads guests may make (FR-DC-01..08: actors "Khách, Người dùng"). A token, when
+	 * sent, still identifies the user.
+	 */
+	private static final String[] PUBLIC_READS = { ApiPaths.PUBLIC_PROFILE, ApiPaths.PUBLIC_USER_LISTINGS,
+			ApiPaths.CATEGORIES, ApiPaths.FEED, ApiPaths.SEARCH, ApiPaths.MAP_LISTINGS, ApiPaths.LISTING_DETAIL };
+
+	/**
+	 * Signed-in reads under {@code /listings} whose paths would otherwise match the
+	 * public listing detail.
+	 */
+	private static final String[] OWNER_LISTING_READS = { ApiPaths.MY_LISTINGS, ApiPaths.POSTING_ELIGIBILITY,
+			ApiPaths.LISTING_IMAGES_BASE + "/**" };
+
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationConverter jwtAuthenticationConverter,
 			@Qualifier("handlerExceptionResolver") HandlerExceptionResolver exceptionResolver) throws Exception {
@@ -55,7 +69,9 @@ public class SecurityConfig {
 				.permitAll()
 				.requestMatchers(ApiPaths.CURRENT_USER_PATTERN)
 				.authenticated()
-				.requestMatchers(HttpMethod.GET, ApiPaths.PUBLIC_PROFILE)
+				.requestMatchers(HttpMethod.GET, OWNER_LISTING_READS)
+				.authenticated()
+				.requestMatchers(HttpMethod.GET, PUBLIC_READS)
 				.permitAll()
 				.requestMatchers(ADMIN_ENDPOINTS)
 				.hasRole(Roles.ADMIN)

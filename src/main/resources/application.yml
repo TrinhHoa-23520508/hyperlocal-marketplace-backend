@@ -111,6 +111,15 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  datasource:
+    read:
+      # Read replica for read-only transactions such as discovery (FR-DC-12). Empty = use the primary.
+      url: ${DB_READ_URL:}
+      username: ${DB_READ_USERNAME:${spring.datasource.username}}
+      password: ${DB_READ_PASSWORD:${spring.datasource.password}}
+      maximum-pool-size: ${DB_READ_POOL_SIZE:10}
+      # Wait this long for the replica, then fall back to the primary.
+      connection-timeout: ${DB_READ_CONNECTION_TIMEOUT:2s}
   cors:
     # Comma-separated browser origins, e.g. the admin console. Empty = CORS off.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}

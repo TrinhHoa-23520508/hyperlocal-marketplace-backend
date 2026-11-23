@@ -3,26 +3,29 @@ package vn.edu.uit.nearby.nearby_backend.areaverification.application;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import vn.edu.uit.nearby.nearby_backend.areaverification.AreaLocality;
 import vn.edu.uit.nearby.nearby_backend.areaverification.FeedArea;
 import vn.edu.uit.nearby.nearby_backend.areaverification.FeedCenter;
 import vn.edu.uit.nearby.nearby_backend.areaverification.InteractionRange;
 import vn.edu.uit.nearby.nearby_backend.areaverification.ListingPinRule;
 import vn.edu.uit.nearby.nearby_backend.areaverification.domain.AreaStatus;
 import vn.edu.uit.nearby.nearby_backend.areaverification.domain.GeoCircle;
+import vn.edu.uit.nearby.nearby_backend.areaverification.domain.RangeLevel;
 import vn.edu.uit.nearby.nearby_backend.areaverification.domain.UserArea;
 import vn.edu.uit.nearby.nearby_backend.areaverification.infrastructure.UserAreaRepository;
 import vn.edu.uit.nearby.nearby_backend.shared.geo.GeoPoint;
 
 /**
- * FR-AR-09 (interaction range, listing pins), FR-AR-03 (new contacts on a listing's area)
- * and FR-AR-08 / FR-DC-01 (feed center).
+ * FR-AR-09 (interaction range, listing pins), FR-AR-03 (new contacts on a listing's
+ * area), FR-AR-08 / FR-DC-01 (feed center) and the public locality label of an area.
  */
 @Service
 @Transactional(readOnly = true)
-public class AreaSpatialRules implements InteractionRange, ListingPinRule, FeedArea {
+public class AreaSpatialRules implements InteractionRange, ListingPinRule, FeedArea, AreaLocality {
 
 	private final UserAreaRepository areas;
 
@@ -57,6 +60,17 @@ public class AreaSpatialRules implements InteractionRange, ListingPinRule, FeedA
 		return areas.findFirstByUserIdAndActiveTrueAndStatusNot(userId, AreaStatus.REMOVED)
 			.map(area -> new FeedCenter(area.getId(), area.center(),
 					parameters.rangeLevels().radiusMetersOf(area.getRangeLevel())));
+	}
+
+	@Override
+	public int radiusMetersOf(@Nullable String rangeLevel) {
+		RangeLevel level = rangeLevel == null ? RangeLevel.DEFAULT : RangeLevel.parse(rangeLevel);
+		return parameters.rangeLevels().radiusMetersOf(level);
+	}
+
+	@Override
+	public Optional<String> localityNameOf(UUID areaId) {
+		return areas.findById(areaId).map(UserArea::getLocalityName);
 	}
 
 }

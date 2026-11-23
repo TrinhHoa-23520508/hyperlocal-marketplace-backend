@@ -20,6 +20,28 @@ public final class ApiPaths {
 
 	public static final String PUBLIC_PROFILE = USERS_BASE + "/{userId}";
 
+	public static final String PUBLIC_USER_LISTINGS = PUBLIC_PROFILE + "/listings";
+
+	public static final String CURRENT_USER_FAVORITES = CURRENT_USER_BASE + "/favorites";
+
+	public static final String LISTINGS_BASE = API_V1 + "/listings";
+
+	public static final String LISTING_IMAGES_BASE = LISTINGS_BASE + "/images";
+
+	public static final String LISTING_DETAIL = LISTINGS_BASE + "/{listingId}";
+
+	public static final String MY_LISTINGS = LISTINGS_BASE + "/me";
+
+	public static final String POSTING_ELIGIBILITY = LISTINGS_BASE + "/posting-eligibility";
+
+	public static final String CATEGORIES = API_V1 + "/categories";
+
+	public static final String FEED = API_V1 + "/feed";
+
+	public static final String SEARCH = API_V1 + "/search";
+
+	public static final String MAP_LISTINGS = API_V1 + "/map/listings";
+
 	public static final String ADMIN_BASE = API_V1 + "/admin";
 
 	public static final String ADMIN_PATTERN = ADMIN_BASE + "/**";
